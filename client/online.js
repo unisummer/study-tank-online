@@ -1,6 +1,7 @@
 /* =========================================================
    공부하는 탱크 — 온라인 (서버에서 열었을 때만 보임)
    1·2단계: 입장 · 멀티 기록(싱글과 따로) · 로비 · 방 · 채팅 · 반 코드
+   3단계: 온라인 대전 (서버가 계산, 휴대폰은 보여 주기)
    ========================================================= */
 (function(){
 'use strict';
@@ -139,12 +140,13 @@ function onMsg(m){
   switch(m.t){
     case 'hello':ON.you=m.you;ON.channel=m.channel;ON.className=m.className;ON.rooms=m.rooms;ON.online=m.online;$('#olChat').innerHTML='';m.chat.forEach(c=>addChat('#olChat',c));if(m.chatOff)addSys('#olChat','지금은 선생님이 채팅을 꺼 두었어요.');renderLobbyOn();break;
     case 'rooms':ON.rooms=m.rooms;ON.online=m.online;renderLobbyOn();break;
-    case 'room':{const was=ON.room;ON.room=m.room;if(!was||was.id!==m.room.id){$('#orChat').innerHTML=''}if(m.room.state==='wait'||!was)showRoom();renderRoom();break}
+    case 'room':{const was=ON.room;ON.room=m.room;if(!was||was.id!==m.room.id){$('#orChat').innerHTML=''}if(!(G&&G.online)&&(m.room.state==='wait'||!was))showRoom();renderRoom();break}
     case 'left':ON.room=null;if(m.why)toast(m.why);showOnLobby();break;
     case 'chat':addChat(m.scope==='room'?'#orChat':'#olChat',m);break;
     case 'sys':addSys(ON.room?'#orChat':'#olChat',m.text);break;
     case 'err':toast(m.text,2200);$('#orMsg').textContent=m.text;break;
     case 'start':onStart(m);break;
+    default:if(m.t&&m.t.startsWith('b_')&&window.__onBattle)window.__onBattle(m);break;
     case 'dup':toast('다른 창에서 같은 이름으로 들어와서 이 창은 연결을 끊어요.',3000);ON.ws=null;break;
     case 'auth_fail':toast('다시 입장해 주세요.');leaveOnline();break;
     case 'class_fail':toast('반 코드가 닫혔어요. 다시 입장해 주세요.',3000);leaveOnline();break;
@@ -217,10 +219,229 @@ $('#orStart').onclick=()=>send({t:'start'});
 $('#orLeave').onclick=()=>send({t:'leave'});
 $('#orSupply').onclick=()=>openQuiz({title:'보급 받기',goal:3,earn:false,onDone:()=>{D.items.repairS++;D.items.scope++;saveNow();toast('보급 완료! 수리 키트 소 +1, 조준경 +1')}});
 
-/* ---------- 시작 (3단계에서 서버 대전으로 연결) ---------- */
-function onStart(m){
-  addSys('#orChat','대전이 시작됐어요! (온라인 대전 화면은 3단계에서 연결됩니다)');
-  toast('대전 시작! 온라인 대전 화면은 다음 단계에서 연결돼요',3000);
-  if(m.room.host===ON.you.id)setTimeout(()=>send({t:'end'}),2500);
+/* =========================================================
+   3단계: 온라인 대전 — 서버가 계산한 결과를 받아 그대로 보여 준다
+   ========================================================= */
+const TE=window.TankEngine;
+const BT={pmap:new Map(),play:null,lastPos:0,posKey:'',fell:false,aiAim:null,myI:-1};
+const NAMEW=k=>(WEAPONS[k]||WEAPONS.basic).name;
+function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
+function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');toast('대전 시작!',1500)}
+
+// 서버와 같은 맵을 만들고, 혼자 하기와 같은 색으로 칠한다
+function buildTerrain(world){
+  WW=world.WW;WH=world.WH;solid=world.solid;bedrockY=world.bedrockY;mapKind=world.kind;valleys=world.valleys;theme=THEMES[world.themeIdx%THEMES.length];
+  const R=TE.rng(world.seed+7);hillSeed=[R()*6,R()*6,R()*6];
+  terrain=document.createElement('canvas');terrain.width=WW;terrain.height=WH;tctx=terrain.getContext('2d');
+  const img=tctx.createImageData(WW,WH),d=img.data,mat=world.mat,th=theme;
+  const c1=hexRgb(th.d1),c2=hexRgb(th.d2),ct=hexRgb(th.top),st=[126,130,142],wd=[156,108,62];
+  for(let x=0;x<WW;x++){let depth=-1;
+    for(let y=0;y<WH;y++){const i=y*WW+x,j=i*4,m=mat[i];
+      if(m){depth=depth<0?0:depth+1;const nz=((x*73856093^y*19349663)>>>0)%23-11;let col;
+        if(m===3){col=wd;const dark=(x%64<2)||depth>=17;col=[col[0]-(dark?35:0)+nz,col[1]-(dark?30:0)+nz,col[2]-(dark?20:0)+nz];if(depth<4)col=[ct[0],ct[1],ct[2]]}
+        else if(m===2){const row=Math.floor(y/26);const mortar=(y%26<2)||((x+(row%2)*24)%48<2);col=mortar?[90,92,102]:[st[0]+nz,st[1]+nz,st[2]+nz]}
+        else{const t=y/WH;col=[c1[0]+(c2[0]-c1[0])*t+nz,c1[1]+(c2[1]-c1[1])*t+nz,c1[2]+(c2[2]-c1[2])*t+nz];if(depth<7)col=ct}
+        d[j]=col[0];d[j+1]=col[1];d[j+2]=col[2];d[j+3]=255}
+      else depth=-1}}
+  tctx.putImageData(img,0,0);miniDirty=true;WEAPONS.nuke.r=world.nukeR;
 }
+function mkTank(v,players){const p=players[v.i]||(players[v.i]={name:v.name,points:0,kills:0,dmg:0,isAI:v.isAI});
+  return {i:v.i,uid:v.uid,p,team:v.team,name:v.name,color:v.color,isAI:v.isAI,x:v.x,y:v.y,vx:0,vy:0,air:false,peak:v.y,hp:v.hp,hpMax:v.hpMax,alive:v.alive,angle:v.angle,
+    dmgMul:v.dmgMul,fuelMax:v.fuelMax,fuel:0,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,roundKills:v.roundKills||0,lastHit:null,deathOrder:0,tx:v.x,ty:v.y}}
+function setFromView(t,v){Object.assign(t,{x:v.x,y:v.y,tx:v.x,ty:v.y,hp:v.hp,alive:v.alive,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,isAI:v.isAI});if(t!==G.me||G.cur!==G.me)t.angle=v.angle;t.vx=0;t.vy=0;t.air=false}
+
+function onRound(info){
+  if(typeof QZ!=='undefined'&&QZ)closeQuiz();
+  const world=TE.genWorld(info.seed,info.mapArg,info.tanks.length);buildTerrain(world);
+  const players=G&&G.online&&G.players?G.players:[];
+  G={online:true,players,round:info.round,totalRounds:info.total,teamMode:info.teamMode,teamWins:info.teamWins.slice(),matchGold:G&&G.online?G.matchGold:0,
+    proj:[],delayed:[],crates:info.crates.map(c=>({id:c.id,x:c.x,y:c.y,ty:c.y,landed:true})),parts:[],texts:[],ghost:null,state:'wait',turn:-1,cycle:1,
+    roundGold:{},roundGoldTotal:0,doubled:false,weapon:'basic',shake:0,flash:0,panHold:0,timer:0,wind:0,turnSec:info.turnSec};
+  G.tanks=info.tanks.map(v=>mkTank(v,players));
+  BT.myI=G.tanks.findIndex(t=>t.uid===ON.you.id);G.me=G.tanks[BT.myI]||G.tanks[0];G.cur=null;BT.pmap.clear();BT.play=null;BT.fell=false;BT.aiAim=null;
+  document.body.classList.add('battle');hideAllScreens();$('#hud').classList.remove('hidden');
+  cam.z=0.8;cam.x=G.me.x;cam.y=G.me.y-150;G.teleArm=false;mapView=null;$('#bMap').textContent='🗺 전체 맵';
+  addText(G.me.x,G.me.y-80,`라운드 ${G.round} · ${MAPS[world.kind].name}`,'#fff',2.4,26);
+  addText(G.me.x,G.me.y-50,G.teamMode?(G.me.team===0?'나는 🔵 파랑 팀':'나는 🔴 빨강 팀'):'내 탱크는 여기!','#bfe2ff',2.4,18);
+  if(G.me.shield&&!G.me.isAI&&D.items.startShield>0){D.items.startShield--;saveNow();addText(G.me.x,G.me.y-110,`시작 방어막 켜짐! (남은 ${D.items.startShield}개)`,'#8ff',2.2,18)}
+  updateHud();
+}
+function onTurn(m){if(!G||!G.online)return;finishPlay();
+  const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
+  G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
+  t.fuel=t.fuelMax;BT.fell=false;BT.posKey='';
+  if(m.extra){if(m.extra.survive&&G.me.alive&&!G.me.isAI)myGold('생존',m.extra.survive);
+    if(m.extra.crate){G.crates.push({id:m.extra.crate.id,x:m.extra.crate.x,y:-60,ty:m.extra.crate.y,landed:false});addText(t.x,t.y-90,'하늘에서 보급 상자가 내려와요!','#ffd43b',2,18)}}
+  if(t===G.me&&!t.isAI){sfx('ok');if(mapView){cam.z=mapView.z;mapView=null;$('#bMap').textContent='🗺 전체 맵'}G.panHold=0}
+  updateHud()}
+function myGold(l,a){if(a<=0)return;G.roundGold[l]=(G.roundGold[l]||0)+a;G.roundGoldTotal+=a;if(l!=='피해 보상'){addText(G.me.x,G.me.y-60,`+${a}G ${l}`,'#ffd43b',1.6,18);sfx('coin')}}
+
+/* ---- 사건 하나 보여 주기 (폭발 · 피해 · 격파 · 상자 · 골드) ---- */
+function boomFx(e){const W=WEAPONS[e.w]||{r:e.r};const r=e.r;
+  if(e.dirt){addDirt(e.x,e.y,r);for(const t of G.tanks)if(t.alive&&Math.hypot(t.x-e.x,t.y-10-e.y)<r)addText(t.x,t.y-46,'흙에 묻힘!','#ffe8b0',1.2,16);
+    for(let i=0;i<Math.round(r*0.5);i++)G.parts.push({x:e.x,y:e.y,vx:rand(-r*2,r*2),vy:rand(-r*3.5,-40),life:0.9,max:0.9,size:rand(3,8),color:theme.d1,grav:500});G.shake=Math.min(14,r/8);sfx('boom');return}
+  carve(e.x,e.y,r);G.shake=Math.max(G.shake||0,Math.min(e.w==='nuke'?30:18,r/3));sfx(r>50?'bigboom':'boom');
+  if(e.w==='nuke'){addText(e.x,e.y-90,'💥','#fff',1.5,60);G.flash=0.9;G.shake=30;for(let i=0;i<70;i++){const a=rand(Math.PI*1.1,Math.PI*1.9),sp=rand(80,420);G.parts.push({x:e.x+rand(-40,40),y:e.y,vx:Math.cos(a)*sp*0.5,vy:Math.sin(a)*sp,life:rand(1,2),max:2,size:rand(14,30),color:i%2?'rgba(255,170,60,.55)':'rgba(90,80,80,.5)',grav:-40})}}
+  if(e.w==='tri3')G.shake=20;
+  const n=Math.min(120,Math.round(r*0.9));for(let i=0;i<n;i++){const a=rand(0,7),s=rand(40,320);G.parts.push({x:e.x,y:e.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,life:rand(0.4,0.9),max:0.9,size:rand(3,8),color:Math.random()<0.5?'#ffb347':'#ff6b3d',grav:300})}
+  for(let i=0;i<14;i++)G.parts.push({x:e.x+rand(-r/2,r/2),y:e.y+rand(-r/2,r/2),vx:rand(-30,30),vy:rand(-60,-20),life:1.2,max:1.2,size:rand(8,16),color:'rgba(80,80,80,.5)',grav:-30});
+  void W}
+function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
+  switch(e.e){
+    case 'boom':boomFx(e);break;
+    case 'hit':if(!t)break;
+      if(e.rb!==undefined&&!e.d){t.rainbow=e.rb;addText(t.x,t.y-58,e.rb?`무지개 방어막! (남은 ${e.rb}번)`:'무지개 방어막 깨짐!','#ffd6ff',1.2,16);break}
+      if(e.sh){t.shield=false;addText(t.x,t.y-58,'방어막!','#8ff',1,16)}
+      if(e.cov)addText(t.x,t.y-76,'엄폐! 피해 '+e.cov+'% 줄임','#bfe2ff',1.4,14);
+      t.hp=e.hp;addText(t.x+rand(-8,8),t.y-44,'-'+e.d,'#ff6b6b',1.2,20);break;
+    case 'ff':if(e.by===BT.myI)addText(t.x,t.y-60,'아군이에요!','#ffb3b3',1,14);break;
+    case 'kill':{if(!t)break;t.alive=false;t.hp=0;const k=G.tanks[e.by];if(k&&k!==t){k.roundKills++;k.p.kills++}
+      if(e.why==='fall')addText(t.x,Math.min(t.y,WH-40),'추락!','#fff',1.4,22);
+      addText(t.x,Math.min(t.y,WH-40)-70,t===G.me?'내 탱크 격파…':'격파!','#fff',1.6,24);G.shake=16;sfx('bigboom');
+      for(let i=0;i<50;i++){const a=rand(0,7),s=rand(60,380);G.parts.push({x:t.x,y:Math.min(t.y,WH)-10,vx:Math.cos(a)*s,vy:Math.sin(a)*s-100,life:rand(0.6,1.2),max:1.2,size:rand(3,9),color:i%3?t.color:'#ffb347',grav:400})}break}
+    case 'split':addText(e.x,e.y-(e.big?30:20),e.big?'대분열!!':'분열!',e.big?'#ffd43b':'#fff',e.big?1.2:0.8,e.big?26:16);if(e.big)G.shake=8;break;
+    case 'warp':if(!t)break;for(let i=0;i<16;i++)G.parts.push({x:e.x,y:e.y-10,vx:rand(-90,90),vy:rand(-90,90),life:0.6,max:0.6,size:5,color:'#c9a6ff',grav:0});addText(e.x,e.y-50,'도착!','#c9a6ff',1.2,18);sfx('ok');break;
+    case 'crate':{const c=G.crates.find(c=>c.id===e.id);G.crates=G.crates.filter(c=>c.id!==e.id);const k=e.item;let label=k==='gold'?'+150G':k==='repair'?'수리 키트 중':NAMEW(k);
+      if(e.i===BT.myI&&!G.me.isAI){if(k==='repair'){D.items.repair=(D.items.repair||0)+1;saveNow()}else if(k!=='gold'){D.ammo[k]=(D.ammo[k]||0)+1;saveNow()}}
+      const x=c?c.x:(t?t.x:0),y=c?c.y:(t?t.y:0);addText(x,y-40,`${e.i===BT.myI?'획득!':(t?t.name:'')+' 획득'} ${label}`,'#ffd43b',2,20);sfx('coin');break}
+    case 'crate_gone':G.crates=G.crates.filter(c=>c.id!==e.id);break;
+    case 'gold':if(e.i===BT.myI&&!G.me.isAI)myGold(e.l,e.a);break;
+    case 'text':addText(e.x,e.y,e.s,e.c,1.4,e.z);break;
+    case 'fire2':sfx('fire');break;
+  }}
+
+/* ---- 발사 장면 다시 보기 ---- */
+function onShot(m){if(!G||!G.online)return;finishPlay();aim=null;
+  const t=G.tanks[m.i];t.angle=m.a;t.showPow=0;BT.aiAim=null;
+  if(t.isAI||t!==G.me)addText(t.x,t.y-56,m.warp?'이동 포탄':NAMEW(m.w),'#fff',1,14);
+  const mz=t;for(let i=0;i<10;i++)G.parts.push({x:mz.x+Math.cos(m.a)*22,y:mz.y-10+Math.sin(m.a)*22,vx:Math.cos(m.a)*rand(40,160)+rand(-30,30),vy:Math.sin(m.a)*rand(40,160)+rand(-30,30),life:0.4,max:0.4,size:rand(3,6),color:'rgba(230,230,230,.8)',grav:-20});
+  sfx('fire');BT.pmap.clear();
+  BT.play={t:0,k:0,j:0,res:m.res,final:m.final,mine:t===G.me,track:[]};G.state='fly';G.panHold=0;updateHud()}
+function finishPlay(){const P=BT.play;if(!P)return;BT.play=null;
+  while(P.j<P.res.ev.length)applyEv(P.res.ev[P.j++]);
+  P.final.forEach(v=>{const t=G.tanks[v.i];if(t)setFromView(t,v)});
+  if(P.mine&&P.track.length>3)G.ghost=P.track;
+  G.proj=[];BT.pmap.clear();G.state='wait'}
+function stepPlay(dt){const P=BT.play;if(!P)return;P.t+=dt;const F=P.res.frames;
+  while(P.k<F.length-2&&F[P.k+1][0]<=P.t)P.k++;
+  const a=F[P.k],b=F[Math.min(F.length-1,P.k+1)];const span=Math.max(1e-6,b[0]-a[0]);const f=clamp((P.t-a[0])/span,0,1);
+  // 탱크 위치
+  a[2].forEach((pa,i)=>{const t=G.tanks[i];if(!t||!pa)return;const pb=b[2][i]||pa;t.x=pa[0]+(pb[0]-pa[0])*f;t.y=pa[1]+(pb[1]-pa[1])*f;t.rot=pa[2];t.chuteOpen=!!pa[3];t.air=!!pa[3]});
+  // 포탄
+  const bm=new Map(b[1].map(q=>[q[0],q]));const live=[];
+  for(const q of a[1]){const qb=bm.get(q[0])||q;let o=BT.pmap.get(q[0]);if(!o){o={trail:[]};BT.pmap.set(q[0],o)}
+    o.x=q[1]+(qb[1]-q[1])*f;o.y=q[2]+(qb[2]-q[2])*f;o.w=q[3];o.trail.push(o.x,o.y);if(o.trail.length>40)o.trail.splice(0,2);live.push(o);
+    if(P.mine&&q[0]===a[1][0][0]&&P.track.length<4000)P.track.push(o.x,o.y)}
+  G.proj=live;
+  while(P.j<P.res.ev.length&&P.res.ev[P.j].t<=P.t)applyEv(P.res.ev[P.j++]);
+  if(P.t>=P.res.dur+0.05)finishPlay()}
+
+/* ---- 매 화면마다 (게임 loop 대신) ---- */
+window.onlineStep=function(dt){
+  if(G.state==='aim'||G.state==='sent'){G.timer=Math.max(0,G.timer-dt);const t=G.cur;
+    if(t===G.me&&G.state==='aim'&&t.alive){
+      if(moveDir&&!aim&&!QZ)moveTank(t,moveDir,dt);else{t.crawlDir=0;t.crawlSense=0}
+      tankPhysics(t,dt);
+      if(!t.alive&&!BT.fell){BT.fell=true;send({t:'b_fell'})}
+      const now=performance.now();const key=Math.round(t.x)+','+Math.round(t.y)+','+t.angle.toFixed(2);
+      if(key!==BT.posKey&&now-BT.lastPos>110){BT.posKey=key;BT.lastPos=now;send({t:'b_pos',x:+t.x.toFixed(1),y:+t.y.toFixed(1),a:+t.angle.toFixed(3),r:+(t.rot||0).toFixed(2)})}
+      $('#fuelBar').style.width=(t.fuel/t.fuelMax*100)+'%';const tm=$('#hTimer');if(tm)tm.textContent=Math.ceil(G.timer)}
+    else if(t){t.x+=(t.tx-t.x)*Math.min(1,dt*10);t.y+=(t.ty-t.y)*Math.min(1,dt*10)}}
+  if(BT.aiAim){const A=BT.aiAim,t=G.tanks[A.i];A.t+=dt;const k=Math.min(1,A.t/0.6);t.angle=A.from+(A.to-A.from)*k;t.showPow=A.pw*k}
+  stepPlay(dt);
+  // 상자 떨어지기 (보이기만, 줍기는 서버가 정함)
+  for(const c of G.crates){if(c.y<c.ty){c.y=Math.min(c.ty,c.y+60*dt);c.landed=c.y>=c.ty}else if(!isSolid(c.x,c.y+1)&&!isSolid(c.x-10,c.y+1)&&!isSolid(c.x+10,c.y+1)&&c.y<WH+20){c.y+=90*dt;c.ty=c.y;c.landed=false}else c.landed=true}
+  G.flash=Math.max(0,(G.flash||0)-dt);
+  for(const q of G.parts){q.life-=dt;q.vy+=q.grav*dt;q.x+=q.vx*dt;q.y+=q.vy*dt}G.parts=G.parts.filter(q=>q.life>0);if(G.parts.length>900)G.parts.splice(0,G.parts.length-900);
+  for(const tx of G.texts){tx.life-=dt;tx.y-=26*dt}G.texts=G.texts.filter(t=>t.life>0);
+  G.shake=Math.max(0,(G.shake||0)-dt*40);
+  if(G.panHold>0)G.panHold-=dt;else{const c=G.cur||G.me;let tx=c?c.x:cam.x,ty=c?c.y-120:cam.y;if(G.proj.length){tx=G.proj[0].x;ty=G.proj[0].y}
+    const k=1-Math.pow(0.02,dt);cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k}
+  clampCam();
+  const now=performance.now();if(Math.floor(now/250)!==Math.floor((now-dt*1000)/250))updateHud();
+};
+window.onlineFire=function(ang,pow,w){if(!G||G.state!=='aim'||G.cur!==G.me)return;const me2=G.me;
+  if(!haveAmmo(me2,w))w='basic';const warp=G.warp;if(warp)w='basic';
+  let w2=null;useAmmo(me2,w);if(G.double&&!warp){w2=haveAmmo(me2,w)?w:'basic';useAmmo(me2,w2)}
+  if(G.weapon!=='basic'&&!haveAmmo(me2,G.weapon))G.weapon='basic';
+  me2.angle=ang;me2.lastPow=pow;G.ghost=null;G.state='sent';
+  send({t:'b_fire',a:+ang.toFixed(4),pw:pow,w,x:+me2.x.toFixed(1),y:+me2.y.toFixed(1),dbl:!!w2,w2:w2||undefined,warp:!!warp});updateHud()};
+window.onlineItem=function(k){const t=G.me;
+  if(ITEMS[k].heal){if(G.repairUsed){toast('수리는 한 턴에 한 번만 할 수 있어요');return}if(t.hp>=t.hpMax){toast('체력이 가득해요');return}}
+  if((k==='shield'||k==='rainbow')&&(t.shield||t.rainbow>0)){toast('방어막은 겹쳐 쓸 수 없어요');return}
+  send({t:'b_item',k})};
+function onItemRes(m){if(!G||!G.online)return;const t=G.tanks[m.i];if(!t)return;const mine=m.i===BT.myI;
+  if(!m.ok){if(mine)toast('지금은 쓸 수 없어요');return}
+  const v=m.tank;t.hp=v.hp;t.shield=v.shield;t.rainbow=v.rainbow;t.chute=v.chute;if(v.spider&&!t.spider){t.spider=true;t.detachT=0}
+  const k=m.k,I=ITEMS[k]||{name:k};
+  if(mine){D.items[k]=Math.max(0,(D.items[k]||0)-1);saveNow();
+    if(I.heal){G.repairUsed=true;addText(t.x,t.y-50,`+${I.heal} 수리`,'#7dffb1',1.2,18)}
+    else if(k==='scope'){G.scope=true;addText(t.x,t.y-50,'조준경!','#fff',1,16)}
+    else if(k==='double'){G.double=true;addText(t.x,t.y-50,'두 번 쏘기 준비!','#fff',1,16)}
+    else if(k==='warp'){G.warp=true;addText(t.x,t.y-50,'이동 포탄 장전!','#c9a6ff',1.2,16)}
+    else addText(t.x,t.y-50,I.name+'!','#8ff',1.2,16)}
+  else addText(t.x,t.y-50,`${I.name}!`,'#fff',1.2,15);
+  updateHud()}
+
+/* ---- 라운드 · 경기 끝 ---- */
+function onRoundEnd(m){if(!G||!G.online)return;finishPlay();G.state='over';aim=null;closeTray();
+  const gold=m.gold[BT.myI]||{};G.roundGold=gold;G.roundGoldTotal=Object.values(gold).reduce((a,b)=>a+b,0);
+  D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();sendLoadout();
+  m.points.forEach((pt,i)=>{if(G.players[i])G.players[i].points=pt});G.teamWins=m.teamWins.slice();
+  m.ranks.forEach(r=>{const t=G.tanks[r.i];t.rank=r.rank;t.roundKills=r.kills});
+  const my=G.me.rank,n=G.tanks.length;$('#hud').classList.add('hidden');
+  $('#rdTitle').textContent=`라운드 ${m.round} / ${m.total} 결과`+(m.why==='time'?' (시간 종료)':'');
+  $('#rdRank').textContent=G.teamMode?(G.me.team===m.winTeam?'승리!':'패배'):my+'등';
+  $('#rdSub').innerHTML=`처치 ${G.me.roundKills} · 받은 골드 <span class="goldtag">${G.roundGoldTotal}G</span><br>지금 골드 <span class="goldtag" id="rdGoldNow">${D.gold}G</span>`;
+  let html='<tr><th>골드</th><th class="n"></th></tr>';for(const k in gold)html+=`<tr><td>${k}</td><td class="n goldtag">+${gold[k]}G</td></tr>`;
+  html+='<tr><th>순위</th><th class="n">점수</th></tr>';
+  if(G.teamMode){html+=`<tr><td>${TEAMNAME[m.winTeam]} 승리</td><td class="n">${TEAMNAME[0]} ${G.teamWins[0]} : ${G.teamWins[1]} ${TEAMNAME[1]}</td></tr>`;G.tanks.forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">[${TEAMNAME[t.team]}] ${esc(t.name)}${t.alive?'':' (격파)'}</td><td class="n">처치 ${t.roundKills}</td></tr>`)}
+  else G.tanks.slice().sort((a,b)=>a.rank-b.rank).forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">${t.rank}. ${esc(t.name)}</td><td class="n">+${n-t.rank}점 (합계 ${t.p.points})</td></tr>`);
+  $('#rdTable').innerHTML=html;
+  const db=$('#rdDouble');db.disabled=G.roundGoldTotal<=0;db.textContent=`📝 2문제 맞히고 보상 2배 (+${G.roundGoldTotal}G)`;db.classList.remove('hidden');
+  const nx=$('#rdNext');nx.disabled=false;nx.textContent=m.round>=m.total?'최종 결과 보기 ▶':'다음 라운드 준비 ▶';
+  BT.roundEndAt=Date.now();showScreen('#sRound');
+}
+function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='undefined'&&QZ)closeQuiz();
+  const st=m.standings;const mine=st.findIndex(s=>s.uid===ON.you.id);let my=mine+1;const n=st.length;
+  let honor=my===1?30:my===2?12:my===3?4:0;if(my===n&&n>1)honor=-8;
+  const myTeam=G.me.team;if(G.teamMode){const w=m.teamWins[0]===m.teamWins[1]?-1:(m.teamWins[0]>m.teamWins[1]?0:1);my=w===myTeam?1:2;honor=w===myTeam?25:w===-1?8:-5}
+  const before=rankOf(D.honor);D.honor=Math.max(0,D.honor+honor);const after=rankOf(D.honor);
+  D.stats.games++;if(my===1)D.stats.wins++;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();
+  $('#fnRank').textContent=G.teamMode?(m.teamWins[0]===m.teamWins[1]?'무승부':(my===1?'팀 승리!':'팀 패배')):my+'등';
+  $('#fnSub').innerHTML=`명예 ${honor>=0?'+':''}${honor} → ${D.honor}점<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after>before?`<br><span class="badge">계급 상승! ${RANKS[after][0]}</span>`:'');
+  let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
+  st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
+  $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
+}
+function backToRoom(){G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');$('#fnLobby').textContent='로비로';if(ON.room){showRoom();renderRoom()}else showOnLobby()}
+function onSync(m){if(!m.info)return;onRound(m.info);
+  for(const [dirt,x,y,r] of m.ops){if(dirt)addDirt(x,y,r);else carve(x,y,r)}
+  if(m.state==='aim'&&m.turn>=0){onTurn({i:m.turn,wind:m.wind,ms:m.ms,cycle:G.cycle,extra:null})}
+  addText(G.me.x,G.me.y-130,'다시 연결됐어요!','#7dffb1',2,18)}
+
+// 혼자 하기 버튼들을 온라인일 때만 다르게
+const _rdNext=$('#rdNext').onclick,_fnLobby=$('#fnLobby').onclick,_mnQuit=$('#mnQuit').onclick;
+$('#rdNext').onclick=()=>{if(!(G&&G.online))return _rdNext();sendLoadout();send({t:'b_next'});const b=$('#rdNext');b.disabled=true;b.textContent='다른 친구를 기다려요… (25초 뒤 자동 시작)'};
+$('#fnLobby').onclick=()=>{if(!(G&&G.online))return _fnLobby();backToRoom()};
+$('#mnQuit').onclick=()=>{if(!(G&&G.online))return _mnQuit();$('#mMenu').classList.add('hidden');if(!confirmQuit())return;send({t:'leave'});ON.room=null;G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');showOnLobby()};
+function confirmQuit(){return window.__gtNoConfirm||window.confirm('대전에서 나갈까요? 내 탱크는 컴퓨터가 대신 움직여요.')}
+$('#orStart').onclick=()=>{sendLoadout();send({t:'start'})};
+$('#orReady').onclick=()=>{const m=ON.room&&ON.room.slots.find(s=>s.uid===ON.you.id);sendLoadout();send({t:'ready',v:!(m&&m.ready)})};
+
+window.__onBattle=function(m){switch(m.t){
+  case 'b_round':onRound(m.info);break;
+  case 'b_turn':onTurn(m);break;
+  case 'b_pos':if(G&&G.online){const t=G.tanks[m.i];if(t&&t!==G.me){t.tx=m.x;t.ty=m.y;t.angle=m.a;t.rot=m.r}}break;
+  case 'b_aim':if(G&&G.online){const t=G.tanks[m.i];BT.aiAim={i:m.i,from:t.angle,to:m.a,pw:m.pw,t:0}}break;
+  case 'b_shot':onShot(m);break;
+  case 'b_ev':if(G&&G.online)m.ev.forEach(applyEv);break;
+  case 'b_item':onItemRes(m);break;
+  case 'b_sys':if(G&&G.online)toast(m.text,2200);break;
+  case 'b_ai':if(G&&G.online&&G.tanks[m.i]){G.tanks[m.i].isAI=true;G.tanks[m.i].p.isAI=true}break;
+  case 'b_round_end':onRoundEnd(m);break;
+  case 'b_match_end':onMatchEnd(m);break;
+  case 'b_sync':onSync(m);break;
+}};
+window.__gtOnline={BT,ON};
 })();

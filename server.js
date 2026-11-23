@@ -1,8 +1,9 @@
-// 공부하는 탱크 온라인 서버 — 1·2단계: 입장, 멀티 기록 저장, 로비·방·채팅, 반 코드
+// 공부하는 탱크 온라인 서버 — 1~3단계: 입장, 멀티 기록 저장, 로비·방·채팅, 반 코드, 서버가 계산하는 온라인 대전
 // 뒤집힌 바다 서버와 같은 방식(Render + Neon). 부품 없이 도는 웹소켓(ws-lite)과 저장소(store)를 그대로 씀.
 const http = require('http'), fs = require('fs'), path = require('path'), zlib = require('zlib'), crypto = require('crypto');
 const { attach } = require('./ws-lite');
 const { makeStore } = require('./store');
+const { Battle } = require('./battle');
 
 const PORT = +process.env.PORT || 10000;
 const ADMIN_KEY = process.env.ADMIN_KEY || '';   // Render 환경 변수에만 넣는다 (채팅·코드에 적지 않음)
@@ -138,7 +139,8 @@ function leaveRoom(info, quiet) {
   const r = ROOMS.get(info.room); info.room = null; if (!r) return;
   const i = r.slots.findIndex(s => s.uid === info.uid); if (i >= 0) r.slots.splice(i, 1);
   const humans = r.slots.filter(s => !s.ai);
-  if (!humans.length) { ROOMS.delete(r.id); pushLobby(r.channel); return; }
+  if (!humans.length) { if (r.battle) r.battle.stop(); ROOMS.delete(r.id); pushLobby(r.channel); return; }
+  if (r.battle) { const p = r.battle.players.find(p => p.uid === info.uid && !p.ai); if (p) r.battle.toAI(p, '방을 나가서 컴퓨터가 대신해요'); }
   if (r.host === info.uid) { r.host = humans[0].uid; if (!quiet) bcRoom(r, { t: 'sys', text: `${humans[0].name} 님이 새 방장이 됐어요.` }); }
   pushRoom(r);
 }
@@ -206,10 +208,21 @@ function onMsg(c, info, raw) {
       if (r.mode === 'team' && (teamCount(r, 0) === 0 || teamCount(r, 1) === 0)) return S(c, { t: 'err', text: '두 팀 모두 한 명 이상 있어야 해요.' });
       r.state = 'playing'; r.seed = crypto.randomInt(1e9);
       pushRoom(r);
-      bcRoom(r, { t: 'start', room: roomView(r), seed: r.seed });   // 3단계에서 서버가 대전을 진행
+      bcRoom(r, { t: 'start', room: roomView(r) });
+      r.battle = new Battle(r, {
+        bc: o => bcRoom(r, o),
+        online: uid => { for (const i of conns.values()) if (i.uid === uid && i.room === r.id) return true; return false; },
+        done: () => { r.slots = r.slots.filter(s => s.ai || [...conns.values()].some(i => i.uid === s.uid && i.room === r.id)); r.slots.forEach(s => s.away = false); if (!r.slots.some(s => !s.ai)) { ROOMS.delete(r.id); pushLobby(r.channel); return; } if (!r.slots.some(s => s.uid === r.host)) r.host = r.slots.find(s => !s.ai).uid; pushRoom(r); },
+      });
       return;
     }
-    case 'end': if (r && r.host === info.uid && r.state === 'playing') { r.state = 'wait'; r.slots.forEach(s => { if (!s.ai) s.ready = false; }); pushRoom(r); } return;   // 3단계 전 임시: 방장이 대기실로 되돌림
+    case 'loadout': if (r) { r.loadouts = r.loadouts || {}; const up = m.up || {}; r.loadouts[info.uid] = { up: { armor: +up.armor | 0, barrel: +up.barrel | 0, engine: +up.engine | 0 }, startShield: !!m.startShield }; } return;
+    case 'b_pos': if (r && r.battle) r.battle.onPos(info.uid, m); return;
+    case 'b_item': if (r && r.battle) r.battle.onItem(info.uid, m); return;
+    case 'b_fire': if (r && r.battle) r.battle.onFire(info.uid, m); return;
+    case 'b_fell': if (r && r.battle) r.battle.onFell(info.uid); return;
+    case 'b_next': if (r && r.battle) r.battle.onNext(info.uid); return;
+    case 'b_sync': if (r && r.battle) r.battle.onBack(info.uid, o => S(c, o)); return;
     case 'ping': return S(c, { t: 'pong' });
   }
 }
@@ -234,11 +247,12 @@ attach(server, '/ws', async (c, url) => {
     if (conns.get(c) !== info) return; conns.delete(c);
     const r = info.room ? ROOMS.get(info.room) : null;
     if (r) { r.slots.forEach(s => { if (s.uid === info.uid) s.away = true; }); pushRoom(r);
-      awayTimers.set(info.uid, { room: r.id, t: setTimeout(() => { awayTimers.delete(info.uid); leaveRoom(info); }, 60000) }); }
+      if (r.battle) r.battle.onAway(info.uid);
+      awayTimers.set(info.uid, { room: r.id, t: setTimeout(() => { awayTimers.delete(info.uid); if (r.battle) { const any = [...conns.values()].some(i => i.room === r.id); if (!any) { r.battle.stop(); ROOMS.delete(r.id); pushLobby(r.channel); } return; } leaveRoom(info); }, 60000) }); }
     pushLobby(channel);
   };
   S(c, { t: 'hello', you: { id: info.uid, name: info.name }, channel, className: code ? CLASSES[code].name : '', rooms: lobbyView(channel), online: onlineList(channel), chat: (CHAT[channel] || []).slice(-30), chatOff: !!CHAT_OFF[channel] });
-  if (info.room) pushRoom(ROOMS.get(info.room)); else pushLobby(channel);
+  if (info.room) { const rr = ROOMS.get(info.room); pushRoom(rr); if (rr.battle) rr.battle.onBack(info.uid, o => S(c, o)); } else pushLobby(channel);
 });
 
 (async () => {

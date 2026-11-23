@@ -1,0 +1,318 @@
+/* =========================================================
+   공부하는 탱크 — 공용 엔진 (서버와 휴대폰이 같이 씀)
+   - 씨앗 번호 하나로 똑같은 맵을 만든다 (그림 기능 없이 계산만)
+   - 서버는 이 엔진으로 포탄·폭발·피해·낙하·보급 상자·컴퓨터 탱크를 계산하고,
+     휴대폰은 그 결과(사건 목록 + 위치 기록)를 받아 그대로 보여 준다.
+   - 혼자 하기 게임(index.html)의 물리 코드를 그대로 옮겨 왔다.
+   ========================================================= */
+(function (root) {
+'use strict';
+const GRAV = 520, VMAX = 950, WINDMAX = 150;
+const WSTAT = {
+  basic: { dmg: 30, r: 30 }, scatter: { dmg: 17, r: 22 }, big: { dmg: 48, r: 56 }, dig: { dmg: 8, r: 78 },
+  mirv: { dmg: 20, r: 26 }, roller: { dmg: 34, r: 34 }, dirtS: { dmg: 0, r: 36, dirt: 1 }, dirt: { dmg: 0, r: 62, dirt: 1 },
+  dirtL: { dmg: 0, r: 105, dirt: 1 }, triple: { dmg: 24, r: 34 }, leap: { dmg: 22, r: 30 }, napalm: { dmg: 9, r: 16 },
+  air: { dmg: 20, r: 30 }, death: { dmg: 28, r: 44 }, nuke: { dmg: 90, r: 430 }, mirvc: { dmg: 20, r: 26 },
+  deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
+};
+const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
+const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched'];
+const CRATE_POOL = [['nuke', 1], ['death', 2], ['air', 3], ['triple', 3], ['napalm', 3], ['leap', 3], ['dirtL', 2], ['gold', 3], ['repair', 2]];
+const HEAL = { repairS: 15, repair: 20, repairL: 25 };
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+// 씨앗 번호로 같은 난수가 나오게 (mulberry32)
+function rng(seed) { let a = seed >>> 0; return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
+function genWorld(seed, kind, nTanks) {
+  const R = rng(seed); const rand = (a, b) => a + R() * (b - a);
+  if (!MAPKEYS.includes(kind)) kind = MAPKEYS[Math.floor(R() * MAPKEYS.length)];
+  const themeIdx = Math.floor(R() * 4);
+  nTanks = nTanks || 4;
+  const WW = Math.round(clamp(1800 + nTanks * 400, 2600, 5000)), WH = 1300;
+  const mat = new Uint8Array(WW * WH);
+  const col = (x, y0, y1, m) => { x |= 0; if (x < 0 || x >= WW) return; y0 = Math.max(0, Math.ceil(y0)); y1 = Math.min(WH - 1, Math.floor(y1)); for (let y = y0; y <= y1; y++) mat[y * WW + x] = m; };
+  const rect = (x, y, w, h, m) => { for (let xx = Math.max(0, Math.round(x)); xx < Math.min(WW, Math.round(x + w)); xx++) col(xx, y, y + h - 1, m); };
+  const ellipse = (cx, cy, rx, ry, m) => { for (let xx = Math.ceil(cx - rx); xx <= cx + rx; xx++) { const dx = (xx - cx) / rx; const h = ry * Math.sqrt(Math.max(0, 1 - dx * dx)); col(xx, cy - h, cy + h, m); } };
+  const plank = (x, y, w, h) => rect(x, y, w, h, 3);
+  let valleys = [];
+  if (kind === 'hills') {
+    const p = [rand(0, 6), rand(0, 6), rand(0, 6), rand(0, 6)];
+    for (let x = 0; x < WW; x++) col(x, WH * 0.6 + Math.sin(x / 300 + p[0]) * 130 + Math.sin(x / 120 + p[1]) * 45 + Math.sin(x / 47 + p[2]) * 12 + Math.sin(x / 700 + p[3]) * 90, WH - 1, 1);
+    const k = Math.round(WW / 900); for (let i = 0; i < k; i++) { const cx = (i + 0.5) / k * WW + rand(-150, 150), cy = WH * rand(0.22, 0.4); ellipse(cx, cy, rand(90, 160), rand(24, 40), 1); }
+    for (let i = 0; i < 2; i++) plank(rand(0.1, 0.8) * WW, WH * rand(0.3, 0.45), rand(160, 260), 22);
+  } else if (kind === 'sky') {
+    [0.24, 0.42, 0.6, 0.78].forEach((ly, li) => {
+      let x = rand(0, 180) + li * 60;
+      while (x < WW - 120) {
+        const w = rand(220, 480), y = WH * ly + rand(-35, 35);
+        if (R() < 0.3) { const D = rand(70, 120) * 0.5; for (let xx = Math.round(x); xx < x + w; xx++) { const t = (xx - x) / w; col(xx, y, y + Math.max(14, D * 4 * t * (1 - t)), 1); } }
+        else plank(x, y, w, rand(20, 26));
+        x += w + rand(110, 240);
+      }
+    });
+  } else if (kind === 'canyon') {
+    const nm = WW > 3600 ? 3 : 2; const gap = WW * 0.16; const mw = (WW - gap * (nm - 1)) / nm;
+    for (let m = 0; m < nm; m++) {
+      const x0 = m * (mw + gap), x1 = x0 + mw, top = WH * rand(0.32, 0.48);
+      for (let x = Math.ceil(x0); x <= x1; x++) { const edge = Math.min(x - x0, x1 - x); const drop = edge < 60 ? (60 - edge) * 2 : 0; col(x, top + Math.sin(x / 90 + m) * 25 + Math.sin(x / 37) * 8 + drop + (Math.abs(x - (x0 + x1) / 2) < mw * 0.18 ? -60 : 0), WH - 1, 1); }
+      if (m < nm - 1) { plank(x1 - 20, top + rand(-10, 30), gap + 40, 18); rect(x1 + gap * 0.3, WH * rand(0.6, 0.7), gap * 0.4, 24, 2); }
+    }
+  } else if (kind === 'scorched') {
+    const k = nTanks, seg = WW / k; const pts = [[0, WH * rand(0.1, 0.25)]];
+    for (let i = 0; i < k; i++) { const vx = (i + 0.5) * seg + rand(-seg * 0.15, seg * 0.15), vy = WH * rand(0.74, 0.88); valleys.push(vx); pts.push([vx, vy]); pts.push([Math.min(WW, (i + 1) * seg + rand(-seg * 0.08, seg * 0.08)), WH * rand(0.08, 0.3)]); }
+    pts[pts.length - 1][0] = WW;
+    const ph = [rand(0, 6), rand(0, 6)];
+    let j = 0;
+    for (let x = 0; x < WW; x++) { while (j < pts.length - 2 && pts[j + 1][0] < x) j++; const [x0, y0] = pts[j], [x1, y1] = pts[j + 1]; const t = clamp((x - x0) / Math.max(1, x1 - x0), 0, 1); const e = (1 - Math.cos(t * Math.PI)) / 2; col(x, y0 + (y1 - y0) * e + Math.sin(x / 37 + ph[0]) * 9 + Math.sin(x / 13 + ph[1]) * 4, WH - 1, 1); }
+    for (let i = 0; i < k; i++) if (R() < 0.6) { const x = (i + 1) * seg + rand(-60, 60); rect(x - rand(80, 140), WH * rand(0.35, 0.55), rand(90, 160), 22, 2); }
+  } else { // towers
+    const gy = WH * 0.84; let x = 0;
+    while (x < WW) { const w = rand(380, 700); for (let xx = Math.round(x); xx <= Math.min(WW - 1, x + w); xx++) col(xx, gy + Math.sin(xx / 80) * 14, WH - 1, 1); x += w + rand(140, 230); }
+    const k = Math.round(WW / 520);
+    for (let i = 0; i < k; i++) {
+      const tx = (i + 0.5) / k * WW + rand(-60, 60), tw = rand(70, 110), th2 = rand(260, 640), ty = gy - th2;
+      rect(tx - tw / 2, ty, tw, th2 + 60, 2);
+      for (let y = ty + 40; y < gy - 90; y += rand(130, 180)) { const side = R() < 0.5 ? -1 : 1; const pw = rand(120, 200); plank(side < 0 ? tx - tw / 2 - pw : tx + tw / 2, y, pw, 20); }
+      if (i < k - 1 && R() < 0.6) { const nx = (i + 1.5) / k * WW; plank(tx + tw / 2, ty + rand(0, 60), Math.max(60, nx - tx - tw), 18); }
+    }
+  }
+  const bedrockY = (kind === 'hills' || kind === 'scorched') ? WH - 40 : 99999;
+  if (bedrockY < WH) rect(0, bedrockY, WW, WH - bedrockY, 2);
+  const solid = new Uint8Array(WW * WH); for (let i = 0; i < mat.length; i++) solid[i] = mat[i] ? 1 : 0;
+  return { WW, WH, mat, solid, kind, valleys, bedrockY, themeIdx, seed, nukeR: Math.round(WW / 6), R };
+}
+
+/* ---------- 땅 다루기 (혼자 하기의 carve/addDirt와 같은 계산) ---------- */
+function isSolidW(w, x, y) { x |= 0; y |= 0; if (x < 0 || x >= w.WW || y < 0 || y >= w.WH) return false; return w.solid[y * w.WW + x] === 1; }
+function carveW(w, cx, cy, r) {
+  const WW = w.WW, x0 = Math.max(0, (cx - r) | 0), x1 = Math.min(WW - 1, (cx + r) | 0), y0 = Math.max(0, (cy - r) | 0), y1 = Math.min(w.WH - 1, w.bedrockY - 1, (cy + r) | 0), r2 = r * r;
+  for (let y = y0; y <= y1; y++) { const dy = y - cy, row = y * WW; for (let x = x0; x <= x1; x++) { const dx = x - cx; if (dx * dx + dy * dy <= r2) w.solid[row + x] = 0; } }
+}
+function dirtW(w, cx, cy, r) {
+  const WW = w.WW, x0 = Math.max(0, (cx - r) | 0), x1 = Math.min(WW - 1, (cx + r) | 0), y0 = Math.max(0, (cy - r) | 0), y1 = Math.min(w.WH - 1, (cy + r) | 0), r2 = r * r;
+  for (let y = y0; y <= y1; y++) { const dy = y - cy; for (let x = x0; x <= x1; x++) { const dx = x - cx; if (dx * dx + dy * dy <= r2) w.solid[y * WW + x] = 1; } }
+}
+function standSpots(w) { const out = [], s = (x, y) => isSolidW(w, x, y); for (let x = 50; x < w.WW - 50; x += 14) { for (let y = 45; y < w.WH - 40; y++) { if (s(x, y) && !s(x, y - 1) && !s(x, y - 24) && !s(x, y - 44) && (s(x - 8, y + 2) || s(x + 8, y + 2))) out.push({ x, y: y - 1 }); } } return out; }
+function shuffleR(a, R) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function surfaceYW(w, x) { for (let y = 0; y < w.WH; y++) if (isSolidW(w, x, y)) return y; return w.WH + 50; }
+function pickSpawns(w, n, R) {
+  if (w.kind === 'scorched' && w.valleys.length >= n) return shuffleR(w.valleys.slice(0, n).map(vx => { const x = Math.round(vx); return { x, y: surfaceYW(w, x) - 1 }; }), R);
+  const spots = shuffleR(standSpots(w), R); let minD = w.WW / (n + 0.5) * 0.85; const res = [];
+  while (res.length < n && minD > 20) { res.length = 0; for (const s0 of spots) { if (res.every(r => Math.hypot(r.x - s0.x, (r.y - s0.y) * 0.8) > minD)) res.push(s0); if (res.length >= n) break; } minD *= 0.85; }
+  while (res.length < n) res.push(spots[Math.floor(R() * spots.length)] || { x: w.WW / 2, y: 100 });
+  return shuffleR(res, R);
+}
+
+/* =========================================================
+   대전 계산 (서버가 돌림)
+   tank: {i, uid, name, team, isAI, x, y, hp, hpMax, alive, angle, dmgMul, shield, rainbow, chute, spider, ...}
+   ========================================================= */
+function makeSim(w, tanks, opts) {
+  opts = opts || {};
+  const WW = w.WW, WH = w.WH;
+  const isSolid = (x, y) => isSolidW(w, x, y);
+  const R = Math.random;
+  const rand = (a, b) => a + R() * (b - a);
+  const S = { w, tanks, wind: 0, crates: [], crateSeq: 1, deathSeq: 0, teamMode: !!opts.teamMode, t: 0, ev: null, proj: null, delayed: null, gold: {} };
+  const sameTeam = (a, b) => a && b && a.team === b.team;
+  WSTAT.nuke.r = w.nukeR;
+  // 사건 기록
+  const E = (o) => { if (S.ev) { o.t = +S.t.toFixed(3); S.ev.push(o); } };
+  const text = (x, y, s, c, size) => E({ e: 'text', x: Math.round(x), y: Math.round(y), s, c: c || '#fff', z: size || 16 });
+  const goldFor = (t, label, amt) => { if (!t || t.isAI || amt <= 0) return; const g = S.gold[t.i] || (S.gold[t.i] = {}); g[label] = (g[label] || 0) + amt; E({ e: 'gold', i: t.i, l: label, a: amt }); };
+  S.goldFor = goldFor;
+
+  function muzzle(t, a) { const r = t.rot || 0; return { x: t.x + Math.sin(r) * 4 + Math.cos(a) * 22, y: t.y - 10 - Math.cos(r) * 4 + Math.sin(a) * 22 }; }
+  function tankHit(p) { for (const t of tanks) { if (!t.alive) continue; if (t === p.owner && p.age < 0.3) continue; if (Math.hypot(p.x - t.x, p.y - (t.y - 10)) < 18) return t; } return null; }
+  function surfaceAt(x, y0) { let y = y0 - 20; while (y < WH && !isSolid(x, y)) y++; return y; }
+  function coverMul(x0, y0, x1, y1) { const L = Math.hypot(x1 - x0, y1 - y0); if (L < 20) return 1; const n = Math.floor(L / 4); let sol = 0, tot = 0; for (let i = 0; i <= n; i++) { const d = i * 4; if (d < 6 || d > L - 14) continue; tot++; if (isSolid(x0 + (x1 - x0) * d / L, y0 + (y1 - y0) * d / L)) sol++; } return tot ? 1 - 0.7 * (sol / tot) : 1; }
+
+  function hurt(t, dmg, src, cov) {
+    if (!t.alive || dmg <= 0) return;
+    if (t.rainbow > 0) { t.rainbow--; E({ e: 'hit', i: t.i, d: 0, rb: t.rainbow }); return; }
+    let sh = 0; if (t.shield) { dmg *= 0.5; t.shield = false; sh = 1; }
+    dmg = Math.min(t.hp, Math.max(1, Math.round(dmg))); t.hp -= dmg;
+    E({ e: 'hit', i: t.i, d: dmg, sh, cov: cov !== undefined && cov < 0.8 ? Math.round((1 - cov) * 100) : 0, hp: t.hp });
+    if (src && src !== t) { if (sameTeam(src, t) && S.teamMode) { E({ e: 'ff', i: t.i, by: src.i }); } else { t.lastHit = src; src.dmgDealt = (src.dmgDealt || 0) + dmg; goldFor(src, '피해 보상', dmg); } }
+    if (t.hp <= 0) killTank(t);
+  }
+  function killTank(t, why) {
+    t.alive = false; t.hp = 0; S.deathSeq++; t.deathOrder = S.deathSeq;
+    const k = t.lastHit; if (k && k !== t) { k.kills = (k.kills || 0) + 1; k.roundKills = (k.roundKills || 0) + 1; goldFor(k, '처치', 100); if ((t.roundKills || 0) >= 2) goldFor(k, '현상금', t.roundKills * 50); }
+    E({ e: 'kill', i: t.i, by: k ? k.i : -1, why: why || '' });
+  }
+  S.killTank = killTank;
+
+  /* ---- 보급 상자 ---- */
+  function rollCrate() { const tot = CRATE_POOL.reduce((a, b) => a + b[1], 0); let x = R() * tot; for (const [k, wt] of CRATE_POOL) { x -= wt; if (x <= 0) return k; } return 'gold'; }
+  S.dropCrate = function () {
+    const x = Math.round(rand(150, WW - 150)); let y = 0; while (y < WH && !(isSolid(x, y + 1) || isSolid(x - 10, y + 1) || isSolid(x + 10, y + 1))) y++;
+    if (y >= WH - 2) return null;
+    const c = { id: S.crateSeq++, x, y, item: rollCrate() }; S.crates.push(c); return c;
+  };
+  function giveCrate(c, t) {
+    c.gone = true; const k = c.item;
+    if (k === 'gold') goldFor(t, '보급 상자', 150);
+    else if (k === 'repair') { if (t.isAI) t.hp = Math.min(t.hpMax, t.hp + 20); }
+    else if (t.isAI && t.ammo) t.ammo[k] = (t.ammo[k] || 0) + 1;
+    E({ e: 'crate', id: c.id, i: t.i, item: k });
+  }
+  S.giveCrate = giveCrate;
+  function hitCrates(x, y, r, owner) { for (const c of S.crates) if (!c.gone && Math.hypot(c.x - x, c.y - 12 - y) < r && owner && owner.alive) giveCrate(c, owner); }
+  S.touchCrates = function (t) { for (const c of S.crates) if (!c.gone && t.alive && Math.hypot(t.x - c.x, (t.y - 10) - (c.y - 12)) < 30) { const ev = S.ev; S.ev = S.ev || []; giveCrate(c, t); const out = S.ev; S.ev = ev; S.crates = S.crates.filter(c => !c.gone); return out; } return null; };
+  function crateFall() { for (const c of S.crates) { if (c.gone) continue; let k = 0; while (k < 3 && !(isSolid(c.x, c.y + 1) || isSolid(c.x - 10, c.y + 1) || isSolid(c.x + 10, c.y + 1))) { c.y++; k++; } if (c.y > WH + 20) { c.gone = true; E({ e: 'crate_gone', id: c.id }); } for (const t of tanks) if (t.alive && Math.hypot(t.x - c.x, (t.y - 10) - (c.y - 12)) < 30) { giveCrate(c, t); break; } } S.crates = S.crates.filter(c => !c.gone); }
+
+  /* ---- 포탄 ---- */
+  let pid = 1;
+  const mkP = (o) => Object.assign({ id: pid++, age: 0, mode: 'fly' }, o);
+  function startRoll(p) { let n = 0; while (isSolid(p.x, p.y) && n < 14) { p.y--; n++; } p.mode = 'roll'; p.rollT = 0; const l = surfaceAt(p.x - 12, p.y), r = surfaceAt(p.x + 12, p.y); p.dir = Math.abs(l - r) > 3 ? (l > r ? -1 : 1) : (Math.sign(p.vx) || 1); }
+  function updRoll(p, dt) {
+    p.rollT += dt; const steps = Math.round((p.rollSpeed || 150) * dt);
+    for (let s = 0; s < steps; s++) {
+      const nx = p.x + p.dir; let ny = p.y, c = 0; while (isSolid(nx, ny) && c < 4) { ny--; c++; } if (isSolid(nx, ny)) { explode(p); return; }
+      p.x = nx; p.y = ny; let f = 0; while (!isSolid(p.x, p.y + 1) && f < 3) { p.y++; f++; }
+      if (p.y > WH || p.x < 0 || p.x >= WW) { p.dead = true; return; }
+      for (const t of tanks) if (t.alive && t !== p.owner && Math.abs(t.x - p.x) < 18 && Math.abs(t.y - 10 - p.y) < 20) { explode(p); return; }
+    }
+    if (p.rollT > (p.rollMax || 2.2)) explode(p);
+  }
+  function updProj(p, dt) {
+    if (p.mode === 'roll') return updRoll(p, dt);
+    const sp = Math.hypot(p.vx, p.vy); const n = Math.max(1, Math.ceil(sp * dt / 3)); const h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const pvy = p.vy; p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h;
+      if (p.w === 'mirv' && pvy < 0 && p.vy >= 0) { p.w = 'mirvc'; [-2, -1, 1, 2].forEach(k => S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 55, vy: p.vy, w: 'mirvc', owner: p.owner, age: 1 }))); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 0 }); }
+      if (p.w === 'death' && pvy < 0 && p.vy >= 0) { p.w = 'deathc'; for (let k = -5; k <= 5; k++) if (k) S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 42, vy: p.vy + rand(-30, 30), w: 'deathc', owner: p.owner, age: 1 })); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 1 }); }
+      if (p.x < -300 || p.x > WW + 300 || p.y > WH + 60) { p.dead = true; if (p.warp) text(p.owner.x, p.owner.y - 50, '이동 실패 (맵 밖)'); return; }
+      if (p.w !== 'napf' && tankHit(p)) { explode(p); return; }
+      if (isSolid(p.x, p.y)) { if (p.w === 'roller') { startRoll(p); return; } if (p.w === 'napf') { startRoll(p); p.rollMax = rand(0.4, 1.4); p.rollSpeed = 110; return; } explode(p); return; }
+    }
+  }
+  function warpLand(p) {
+    p.dead = true; const o = p.owner; if (!o.alive) return; let x = clamp(p.x, 20, WW - 20), y = Math.min(p.y, WH - 2), k = 0;
+    while ((isSolid(x, y - 2) || isSolid(x, y - 24)) && k < 120) { y--; k++; }
+    o.x = x; o.y = y; o.vy = 0; o.vx = 0; o.air = true; o.peak = y; o.detachT = 0;
+    E({ e: 'warp', i: o.i, x: Math.round(x), y: Math.round(y) });
+  }
+  function explode(p) {
+    if (p.warp) { warpLand(p); return; }
+    p.dead = true; const W = WSTAT[p.w];
+    hitCrates(p.x, p.y, W.r + 24, p.owner);
+    const sub = (wk, o) => mkP(Object.assign({ x: p.x, y: p.y, vx: 0, vy: 0, w: wk, owner: p.owner, age: 1 }, o));
+    if (p.w === 'triple') S.delayed.push({ t: 0.35, p: sub('tri2'), boom: 1 }, { t: 0.75, p: sub('tri3'), boom: 1 });
+    if (p.w === 'leap') { p.bounce = (p.bounce || 0) + 1; if (p.bounce < 4) { let y = p.y, k = 0; while (isSolid(p.x, y) && k < 30) { y--; k++; } const q = sub('leap', { y: y - 4, vx: clamp(p.vx * 0.7, -260, 260) + rand(-20, 20), vy: -Math.max(260, Math.abs(p.vy) * 0.6) }); q.bounce = p.bounce; q.age = 0.5; S.delayed.push({ t: 0.05, p: q }); } }
+    if (p.w === 'napalm') { for (let i = 0; i < 12; i++) { let y = p.y, k = 0; while (isSolid(p.x, y) && k < 30) { y--; k++; } S.delayed.push({ t: 0.02 * i, p: sub('napf', { y: y - 2, x: p.x + rand(-10, 10), vx: rand(-160, 160), vy: rand(-180, -60) }) }); } }
+    if (p.w === 'air') { text(p.x, p.y - 60, '하늘 폭격!', '#ffd43b', 26); for (let i = 0; i < 9; i++) S.delayed.push({ t: 0.5 + i * 0.12, p: sub('airb', { x: p.x + (i - 4) * 34 + rand(-12, 12), y: -40 - rand(0, 120), vx: rand(-15, 15), vy: 250 }) }); }
+    if (W.dirt) { dirtW(w, p.x, p.y, W.r); E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w, dirt: 1 }); return; }
+    const hits = []; for (const t of tanks) { if (!t.alive) continue; const d = Math.hypot(t.x - p.x, (t.y - 10) - p.y); const Rr = W.r + 14; if (d < Rr) { const f = 1 - Math.max(0, d - 8) / Rr * 0.75; const cov = coverMul(p.x, p.y, t.x, t.y - 10); hits.push([t, W.dmg * f * cov * (p.owner.dmgMul || 1), cov]); } }
+    carveW(w, p.x, p.y, W.r);
+    E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w });
+    for (const [t, dmg, cov] of hits) hurt(t, dmg, p.owner, cov);
+  }
+
+  /* ---- 탱크 낙하 (혼자 하기 tankPhysics와 같음) ---- */
+  function surfNormal(cx, cy, r) { let sx = 0, sy = 0, c = 0; for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a); if (isSolid(cx + dx * r, cy + dy * r) || isSolid(cx + dx * r * 0.6, cy + dy * r * 0.6)) { sx += dx; sy += dy; c++; } } if (!c) return null; const L = Math.hypot(sx, sy); if (L < 0.01) return { x: 0, y: -1 }; return { x: -sx / L, y: -sy / L }; }
+  function solidNear(cx, cy, r) { for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; if (isSolid(cx + Math.cos(a) * r, cy + Math.sin(a) * r)) return true; } return isSolid(cx, cy); }
+  function spiderPhysics(t, dt) {
+    t.detachT = Math.max(0, (t.detachT || 0) - dt);
+    const cx = t.x, cy = t.y - 10; const n = t.detachT > 0 ? null : surfNormal(cx, cy, 17);
+    if (!n) { t.rot = (t.rot || 0) * 0.9; return false; }
+    t.air = false; t.chuteOpen = false; t.vx = 0; t.vy = 0; t.nx = n.x; t.ny = n.y;
+    const target = Math.atan2(n.x, -n.y); let dr = target - (t.rot || 0); while (dr > Math.PI) dr -= 2 * Math.PI; while (dr < -Math.PI) dr += 2 * Math.PI; t.rot = (t.rot || 0) + dr * Math.min(1, dt * 12);
+    let x = cx, y = cy, k = 0; while (solidNear(x, y, 9) && k < 12) { x += n.x; y += n.y; k++; }
+    k = 0; while (!solidNear(x, y, 12) && k < 6) { x -= n.x; y -= n.y; k++; }
+    t.x = clamp(x, 12, WW - 12); t.y = y + 10; return true;
+  }
+  function tankPhysics(t, dt) {
+    if (!t.alive) return;
+    if (t.spider && spiderPhysics(t, dt)) return;
+    if (!t.spider) { let n = 0; while (isSolid(t.x, t.y - 2) && n < 120) { t.y--; n++; } t.rot = 0; }
+    const grounded = isSolid(t.x, t.y + 1) || isSolid(t.x - 9, t.y + 1) || isSolid(t.x + 9, t.y + 1);
+    if (grounded && (t.vy || 0) >= 0) { t.air = false; t.vy = 0; t.vx = 0; t.chuteOpen = false; }
+    else {
+      if (!t.air) { t.air = true; t.peak = t.y; t.vy = t.vy || 0; t.vx = t.vx || 0; }
+      t.vy = Math.min(t.vy + GRAV * dt, 900);
+      if (t.chute && t.vy > 0 && t.y - t.peak > 30) { t.chuteOpen = true; t.vy = Math.min(t.vy, 75); const wantVx = S.wind * 0.7; t.vx += (wantVx - t.vx) * Math.min(1, dt * 2); }
+      const dy = t.vy * dt; const steps = Math.ceil(Math.abs(dy)); const sy = dy / Math.max(1, steps);
+      for (let i = 0; i < steps; i++) { if (sy > 0 && (isSolid(t.x, t.y + 1) || isSolid(t.x - 9, t.y + 1) || isSolid(t.x + 9, t.y + 1))) break; if (sy < 0 && isSolid(t.x, t.y - 24)) { t.vy = 0; break; } t.y += sy; }
+      if (t.vy < 0) t.peak = Math.min(t.peak, t.y);
+      if (t.vx) { const nx = t.x + t.vx * dt; if (!isSolid(nx, t.y - 6) && !isSolid(nx, t.y - 18)) t.x = nx; else t.vx = 0; }
+      if (t.x <= 12 || t.x >= WW - 12) t.vx = 0;
+      if (t.y > WH + 30) { text(t.x, WH - 40, '추락!', '#fff', 22); killTank(t, 'fall'); }
+    }
+    t.x = clamp(t.x, 12, WW - 12);
+  }
+  S.tankPhysics = tankPhysics;
+
+  /* ---- 한 번의 발사를 끝까지 계산 → 결과 묶음 ---- */
+  S.resolveShot = function (shooter, ang, pow, wk, flags) {
+    flags = flags || {};
+    WSTAT.nuke.r = w.nukeR; S.ev = []; S.proj = []; S.delayed = []; S.t = 0; S.gold = {};
+    const frames = [];
+    const v = pow / 100 * VMAX; const m = muzzle(shooter, ang);
+    const mk = a => mkP({ x: m.x, y: m.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, w: wk, owner: shooter });
+    shooter.angle = ang;
+    if (flags.warp) { const pr = mk(ang); pr.w = 'basic'; pr.warp = true; S.proj.push(pr); }
+    else if (wk === 'scatter') [-1, 0, 1].forEach(i => S.proj.push(mk(ang + i * 0.085))); else S.proj.push(mk(ang));
+    let second = flags.double && !flags.warp ? { delay: 0.45, w: flags.secondW || wk } : null;
+    const dt = 1 / 60; let quiet = 0, step = 0;
+    const snap = () => {
+      frames.push([+S.t.toFixed(3), S.proj.filter(p => !p.dead).map(p => [p.id, Math.round(p.x), Math.round(p.y), p.w, p.mode === 'roll' ? 1 : 0]),
+        tanks.map(t => t.alive ? [Math.round(t.x), Math.round(t.y), +(t.rot || 0).toFixed(2), t.chuteOpen ? 1 : 0] : 0)]);
+    };
+    snap();
+    while (S.t < 25) {
+      S.t += dt; step++;
+      if (second) { second.delay -= dt; if (second.delay <= 0) { if (shooter.alive) { const p = mk(ang); p.w = second.w; S.proj.push(p); E({ e: 'fire2', i: shooter.i }); } second = null; } }
+      for (const d of S.delayed) { d.t -= dt; if (d.t <= 0) { d.done = true; if (d.boom) explode(d.p); else S.proj.push(d.p); } }
+      S.delayed = S.delayed.filter(d => !d.done);
+      for (const p of S.proj) if (!p.dead) updProj(p, dt);
+      S.proj = S.proj.filter(p => !p.dead);
+      for (const t of tanks) tankPhysics(t, dt);
+      crateFall();
+      if (step % 3 === 0) snap();
+      const busy = S.proj.length || S.delayed.length || second || tanks.some(t => t.alive && t.air);
+      quiet = busy ? 0 : quiet + dt;
+      if (quiet > 0.4) break;
+    }
+    snap();
+    const out = { dur: +S.t.toFixed(3), frames, ev: S.ev, gold: S.gold };
+    S.ev = null; S.proj = null; S.delayed = null;
+    return out;
+  };
+
+  /* ---- 컴퓨터 탱크 조준 ---- */
+  function simulate(t, ang, pow, wind, maxT) {
+    const v = pow / 100 * VMAX; const m = muzzle(t, ang); let x = m.x, y = m.y, vx = Math.cos(ang) * v, vy = Math.sin(ang) * v, age = 0; const h = 1 / 120;
+    for (let i = 0; i < maxT * 120; i++) {
+      vx += wind * h; vy += GRAV * h; x += vx * h; y += vy * h; age += h;
+      if (x < -300 || x > WW + 300 || y > WH + 60) return { x, y, out: true };
+      if (isSolid(x, y)) return { x, y };
+      for (const o of tanks) { if (!o.alive) continue; if (o === t && age < 0.3) continue; if (Math.hypot(x - o.x, y - (o.y - 10)) < 18) return { x, y, hit: o }; }
+    }
+    return { x, y };
+  }
+  S.aiPlan = function (t, diff, preferUid) {
+    const alive = tanks.filter(o => o.alive);
+    const foes = alive.filter(o => o !== t && !(S.teamMode && sameTeam(o, t))); const mates = S.teamMode ? alive.filter(o => o !== t && sameTeam(o, t)) : [];
+    if (!foes.length) return { a: -Math.PI / 2, pw: 30, w: 'basic' };
+    const humans = foes.filter(o => !o.isAI);
+    let target = (humans.length && R() < 0.4) ? humans[Math.floor(R() * humans.length)] : foes.reduce((b, o) => Math.abs(o.x - t.x) < Math.abs(b.x - t.x) ? o : b, foes[0]);
+    let best = { d: 1e9, a: -Math.PI / 4, pw: 60 };
+    for (let deg = 8; deg <= 172; deg += 4) { const a = -deg * Math.PI / 180; for (let pw = 22; pw <= 100; pw += 3) { const r = simulate(t, a, pw, S.wind, 6); if (r.out) continue; let d = Math.hypot(r.x - target.x, r.y - (target.y - 10)) + (r.hit === t ? 500 : 0) + (Math.hypot(r.x - t.x, r.y - t.y) < 70 ? 300 : 0); for (const mt of mates) if (Math.hypot(r.x - mt.x, r.y - (mt.y - 10)) < 70) d += 400; if (d < best.d) best = { d, a, pw }; } }
+    const noise = [[11, 6], [5, 2.6], [2, 1]][diff === undefined ? 1 : diff];
+    let wpn = 'basic'; const ammo = t.ammo || {}; const opts2 = Object.keys(ammo).filter(k => ammo[k] > 0 && !WSTAT[k].dirt); const sup = opts2.filter(k => SUPER.includes(k));
+    if (sup.length && R() < 0.5) wpn = sup[0]; else if (opts2.length && R() < 0.35) wpn = opts2[Math.floor(R() * opts2.length)];
+    if (wpn !== 'basic') ammo[wpn]--;
+    return { a: best.a + rand(-noise[1], noise[1]) * Math.PI / 180, pw: clamp(best.pw + rand(-noise[0], noise[0]), 10, 100), w: wpn };
+  };
+  S.newWind = function () { S.wind = clamp((S.wind || 0) / WINDMAX * 0.4 + rand(-0.8, 0.8), -1, 1) * WINDMAX; return S.wind; };
+  S.heal = HEAL;
+  return S;
+}
+
+const API = { GRAV, VMAX, WINDMAX, WSTAT, SUPER, MAPKEYS, HEAL, rng, genWorld, isSolidW, carveW, dirtW, pickSpawns, makeSim, surfaceYW };
+if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.TankEngine = API;
+})(typeof window !== 'undefined' ? window : this);
