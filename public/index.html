@@ -540,12 +540,13 @@ const BGM=(()=>{
     if(b===2||b===6)noise(t,0.12,0.35,1800);                            // 짝
     noise(t,0.03,b%2?0.12:0.07,7000);                                   // 칙
     if(bar%8===7&&b>=4)tone('square',m||84,t,E8*0.4,0.05,1.5)}          // 마디 끝 장식
-  function tick(){if(!AC)return;while(next<AC.currentTime+0.15){play(step,next);step++;next+=E8}}
+  function tick(){if(!AC||!on)return;if(next<AC.currentTime-0.05)next=AC.currentTime+0.05;   // 화면이 멈췄다 돌아오면 밀린 음은 건너뜀
+    while(next<AC.currentTime+0.25){play(step,next);step++;next+=E8}}
   return {
     start(){if(on||!AC)return;on=true;master=AC.createGain();master.gain.setValueAtTime(0.0001,AC.currentTime);master.gain.linearRampToValueAtTime(0.13,AC.currentTime+1.2);master.connect(AC.destination);
       next=AC.currentTime+0.08;step=0;timer=setInterval(tick,30);tick()},
     stop(){if(!on)return;on=false;clearInterval(timer);const m=master;try{m.gain.cancelScheduledValues(AC.currentTime);m.gain.setValueAtTime(m.gain.value,AC.currentTime);m.gain.linearRampToValueAtTime(0.0001,AC.currentTime+0.6)}catch(e){}setTimeout(()=>{try{m.disconnect()}catch(e){}},800)},
-    get on(){return on},
+    get on(){return on},get master(){return master},
     prime(until){while(next<until){play(step,next);step++;next+=E8}}};   // 미리 듣기 파일 만들 때 사용
 })();
 function musicUpdate(){const want=!!(AC&&G&&G.tanks&&D&&D.set.sound&&D.set.music!==false&&!document.hidden&&AC.state==='running');if(want&&!BGM.on)BGM.start();else if(!want&&BGM.on)BGM.stop()}
@@ -1125,7 +1126,7 @@ function clampCam(){const fit=Math.min(cw/(WW*baseScale),ch/((WH+300)*baseScale)
   cam.x=WW>2*hw?clamp(cam.x,hw,WW-hw):WW/2;let lo=hh-260,hi=WH+30-hh+((typeof myAimTurn==='function'&&G&&myAimTurn())?hh*0.9:0);cam.y=lo>hi?(lo+hi)/2:clamp(cam.y,lo,hi)}
 let aim=null,pan=null,pinch=null;const ptrs=new Map();
 function myAimTurn(){return G&&G.state==='aim'&&G.cur===G.me&&G.me.alive&&!QZ}
-cv.addEventListener('pointerdown',e=>{ensureAudio();if(!G)return;try{cv.setPointerCapture(e.pointerId)}catch(_){}
+cv.addEventListener('pointerdown',e=>{ensureAudio();try{musicUpdate()}catch(_){}if(!G)return;try{cv.setPointerCapture(e.pointerId)}catch(_){}
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});closeTray();
   if(ptrs.size===2){aim=null;pan=null;const [a,b]=[...ptrs.values()];pinch={d0:Math.hypot(a.x-b.x,a.y-b.y),z0:cam.z};return}
   if(miniHit(e.clientX,e.clientY)){const m=MINI;cam.x=(e.clientX-m.x)/m.w*WW;cam.y=(e.clientY-m.y)/m.h*WH;G.panHold=4;clampCam();ptrs.delete(e.pointerId);return}
