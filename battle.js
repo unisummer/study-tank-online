@@ -50,7 +50,7 @@ class Battle {
       const hpMax = Math.round(100 * (1 + 0.03 * armor));
       return { i, uid: p.uid, name: p.name, team: p.team, isAI: p.ai, color: p.color, x: spawns[i].x, y: spawns[i].y, vx: 0, vy: 0, air: false, peak: 0,
         hp: hpMax, hpMax, alive: true, angle: spawns[i].x < this.world.WW / 2 ? -Math.PI / 4 : -Math.PI * 3 / 4, dmgMul: 1 + 0.03 * barrel, fuelMax: 100 * (1 + 0.03 * engine),
-        shield: !!lo.startShield && !p.ai, tier: p.uid ? (lo.tier || null) : null, rainbow: 0, chute: false, spider: false, rot: 0, roundKills: 0, ammo: p.ai ? AI_AMMO() : null };
+        shield: !!lo.startShield && !p.ai, tier: p.uid && this.io.tier ? this.io.tier(p.uid) : null, rainbow: 0, chute: false, spider: false, rot: 0, roundKills: 0, ammo: p.ai ? AI_AMMO() : null };
     });
     this.sim = E.makeSim(this.world, this.tanks, { teamMode: this.teamMode });
     this.roundGold = {}; this.ops = []; this.cycle = 1;
@@ -171,7 +171,8 @@ class Battle {
   matchEnd() {
     this.state = 'over';
     const st = this.players.map((p, i) => ({ i, name: p.name, uid: p.uid, team: p.team, ai: p.ai, points: p.points, kills: p.kills, dmg: p.dmg })).sort((a, b) => b.points - a.points || b.kills - a.kills);
-    this.bc({ t: 'b_match_end', standings: st, teamMode: this.teamMode, teamWins: this.teamWins });
+    const ratings = this.io.rate ? this.io.rate(st, this.teamMode, this.teamWins) : {};
+    this.bc({ t: 'b_match_end', standings: st, teamMode: this.teamMode, teamWins: this.teamWins, ratings });
     this.room.state = 'wait'; this.room.battle = null; this.room.slots.forEach(s => { if (!s.ai) s.ready = false; });
     this.stop(); this.io.done();
   }

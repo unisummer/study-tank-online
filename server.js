@@ -4,10 +4,13 @@ const http = require('http'), fs = require('fs'), path = require('path'), zlib =
 const { attach } = require('./ws-lite');
 const { makeStore } = require('./store');
 const { Battle } = require('./battle');
+const { makeRatings } = require('./rating');
 
 const PORT = +process.env.PORT || 10000;
 const ADMIN_KEY = process.env.ADMIN_KEY || '';   // Render 환경 변수에만 넣는다 (채팅·코드에 적지 않음)
 const store = makeStore();
+const RT = makeRatings(store);
+const tierLite = uid => { const t = RT.tierOf(uid); return { name: t.name, short: t.short, color: t.color }; };
 let storeOk = false, storeErr = '';
 
 // ---------- 화면 파일 ----------
@@ -128,7 +131,7 @@ const MAPS = ['random', 'hills', 'sky', 'canyon', 'towers', 'scorched'];
 const DATAS = ['phon', 'add1', 'add2', 'sub1', 'gugu', 'free'];
 function roomView(r) {
   return { id: r.id, name: r.name, host: r.host, max: r.max, mode: r.mode, map: r.map, rounds: r.rounds, data: r.data, turn: r.turn, state: r.state,
-    slots: r.slots.map(s => ({ uid: s.uid || 0, name: s.name, team: s.team, ready: !!s.ready, ai: !!s.ai, away: !!s.away, tier: s.tier || null })) };
+    slots: r.slots.map(s => ({ uid: s.uid || 0, name: s.name, team: s.team, ready: !!s.ready, ai: !!s.ai, away: !!s.away, tier: s.ai && !s.uid ? null : tierLite(s.uid) })) };
 }
 function lobbyView(ch) { return [...ROOMS.values()].filter(r => r.channel === ch).map(r => ({ id: r.id, name: r.name, n: r.slots.filter(s => !s.ai).length, ai: r.slots.filter(s => s.ai).length, max: r.max, mode: r.mode, map: r.map, data: r.data, state: r.state })); }
 function pushLobby(ch) { bcChannel(ch, { t: 'rooms', rooms: lobbyView(ch), online: onlineList(ch) }); }
@@ -211,20 +214,21 @@ function onMsg(c, info, raw) {
       bcRoom(r, { t: 'start', room: roomView(r) });
       r.battle = new Battle(r, {
         bc: o => bcRoom(r, o),
+        tier: uid => tierLite(uid),
+        rate: (st, tm, tw) => { const out = RT.apply(st, tm, tw); for (const c2 of conns.keys()) { const i2 = conns.get(c2); if (out[i2.uid]) S(c2, { t: 'my_tier', tier: RT.tierOf(i2.uid) }); } return out; },
         online: uid => { for (const i of conns.values()) if (i.uid === uid && i.room === r.id) return true; return false; },
         done: () => { r.slots = r.slots.filter(s => s.ai || [...conns.values()].some(i => i.uid === s.uid && i.room === r.id)); r.slots.forEach(s => s.away = false); if (!r.slots.some(s => !s.ai)) { ROOMS.delete(r.id); pushLobby(r.channel); return; } if (!r.slots.some(s => s.uid === r.host)) r.host = r.slots.find(s => !s.ai).uid; pushRoom(r); },
       });
       return;
     }
-    case 'loadout': if (r) { r.loadouts = r.loadouts || {}; const up = m.up || {}; const tr = m.tier || {}; const tier = { name: String(tr.name || '').slice(0, 12), short: String(tr.short || '').slice(0, 3), color: /^#[0-9a-f]{3,6}$/i.test(tr.color || '') ? tr.color : '#9aa3ad' };
-      r.loadouts[info.uid] = { up: { armor: +up.armor | 0, barrel: +up.barrel | 0, engine: +up.engine | 0 }, startShield: !!m.startShield, tier };
-      const sl = r.slots.find(s => s.uid === info.uid); if (sl) { const had = sl.tier && sl.tier.name; sl.tier = tier; if (had !== tier.name) pushRoom(r); } } return;
+    case 'loadout': if (r) { r.loadouts = r.loadouts || {}; const up = m.up || {}; r.loadouts[info.uid] = { up: { armor: +up.armor | 0, barrel: +up.barrel | 0, engine: +up.engine | 0 }, startShield: !!m.startShield }; } return;
     case 'b_pos': if (r && r.battle) r.battle.onPos(info.uid, m); return;
     case 'b_item': if (r && r.battle) r.battle.onItem(info.uid, m); return;
     case 'b_fire': if (r && r.battle) r.battle.onFire(info.uid, m); return;
     case 'b_fell': if (r && r.battle) r.battle.onFell(info.uid); return;
     case 'b_next': if (r && r.battle) r.battle.onNext(info.uid); return;
     case 'b_sync': if (r && r.battle) r.battle.onBack(info.uid, o => S(c, o)); return;
+    case 'rank': S(c, { t: 'rank', me: RT.tierOf(info.uid), board: RT.board(30) }); return;
     case 'ping': return S(c, { t: 'pong' });
   }
 }
@@ -253,12 +257,12 @@ attach(server, '/ws', async (c, url) => {
       awayTimers.set(info.uid, { room: r.id, t: setTimeout(() => { awayTimers.delete(info.uid); if (r.battle) { const any = [...conns.values()].some(i => i.room === r.id); if (!any) { r.battle.stop(); ROOMS.delete(r.id); pushLobby(r.channel); } return; } leaveRoom(info); }, 60000) }); }
     pushLobby(channel);
   };
-  S(c, { t: 'hello', you: { id: info.uid, name: info.name }, channel, className: code ? CLASSES[code].name : '', rooms: lobbyView(channel), online: onlineList(channel), chat: (CHAT[channel] || []).slice(-30), chatOff: !!CHAT_OFF[channel] });
+  S(c, { t: 'hello', you: { id: info.uid, name: info.name, tier: RT.tierOf(info.uid) }, channel, className: code ? CLASSES[code].name : '', rooms: lobbyView(channel), online: onlineList(channel), chat: (CHAT[channel] || []).slice(-30), chatOff: !!CHAT_OFF[channel] });
   if (info.room) { const rr = ROOMS.get(info.room); pushRoom(rr); if (rr.battle) rr.battle.onBack(info.uid, o => S(c, o)); } else pushLobby(channel);
 });
 
 (async () => {
-  try { await store.init(); storeOk = true; } catch (e) { storeErr = String(e.message || e); console.error('저장소 연결 실패:', storeErr); }
+  try { await store.init(); storeOk = true; await RT.load(); } catch (e) { storeErr = String(e.message || e); console.error('저장소 연결 실패:', storeErr); }
   await loadClasses();
   server.listen(PORT, () => console.log(`공부하는 탱크 서버: ${PORT}번 포트, 저장소=${store.kind}${storeOk ? '' : ' (연결 실패: ' + storeErr + ')'}`));
 })();

@@ -17,6 +17,7 @@ const QUICK=['안녕!','잘했어!','한 판 더!','문제 풀고 올게','준�
 const css=`
 .on-col{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
 @media (max-width:760px){.on-col{grid-template-columns:1fr}}
+#onBoardWrap{position:fixed;inset:0;background:rgba(5,10,20,.7);z-index:60;display:flex;align-items:center;justify-content:center}#onBoardWrap.hidden{display:none}.on-board{background:#16243d;border-radius:16px;padding:14px;width:min(560px,94vw);max-height:86vh;overflow:auto;color:#fff}.on-board td{padding:4px 6px}
 .on-room{background:#22365a;border-radius:14px;padding:12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .on-room b{font-size:17px}.on-room .sub{font-size:13px}
 .on-chat{height:220px;overflow:auto;background:#0f1b2d;border-radius:12px;padding:8px 10px;font-size:14px;line-height:1.5;touch-action:pan-y}
@@ -138,6 +139,8 @@ function send(o){if(ON.ws&&ON.ws.readyState===1)ON.ws.send(JSON.stringify(o))}
 setInterval(()=>send({t:'ping'}),25000);
 function onMsg(m){
   switch(m.t){
+    case 'my_tier':if(ON.you){ON.you.tier=m.tier;renderLobbyOn()}break;
+    case 'rank':showBoard(m);break;
     case 'hello':ON.you=m.you;ON.channel=m.channel;ON.className=m.className;ON.rooms=m.rooms;ON.online=m.online;$('#olChat').innerHTML='';m.chat.forEach(c=>addChat('#olChat',c));if(m.chatOff)addSys('#olChat','지금은 선생님이 채팅을 꺼 두었어요.');renderLobbyOn();break;
     case 'rooms':ON.rooms=m.rooms;ON.online=m.online;renderLobbyOn();break;
     case 'room':{const was=ON.room;ON.room=m.room;if(!was||was.id!==m.room.id){$('#orChat').innerHTML=''}if(!(G&&G.online)&&(m.room.state==='wait'||!was))showRoom();renderRoom();break}
@@ -161,7 +164,7 @@ function showOnLobby(){if(ON.room){showRoom();return}showScreen('#sOnLobby');$('
 function renderLobbyOn(){if(!D)return;
   const ri=rankOf(D.honor);
   $('#olWho').innerHTML=`<b>${esc(me)}</b> 님 · ${ON.className?`<span class="on-badge">${esc(ON.className)} 학급 모임방</span>`:'모두의 로비'}`;
-  $('#olGold').textContent=D.gold+'G';$('#olRank').textContent=`${RANKS[ri][0]} · 명예 ${D.honor}`;
+  $('#olGold').textContent=D.gold+'G';const T=ON.you&&ON.you.tier;$('#olRank').innerHTML=T?`${tierBadge(T)} `+(T.rank?`상위 ${T.top}% · 실력 ${T.r} · <u>순위표</u>`:`배치 ${T.games}/${T.need}경기 · <u>순위표</u>`):'';void ri;
   const box=$('#olRooms');box.innerHTML='';
   if(!ON.rooms.length)box.innerHTML='<div class="sub">아직 방이 없어요. ‘방 만들기’를 눌러 보세요!</div>';
   ON.rooms.forEach(r=>{const d=document.createElement('div');d.className='on-room';
@@ -188,7 +191,7 @@ const rgv=window.refreshGoldViews;refreshGoldViews=function(){rgv();if(window.ON
 /* ---------- 방 ---------- */
 function showRoom(){hideAllScreens();$('#sOnRoom').classList.remove('hidden')}
 function chipsTo(box,items,cur,cb,enabled){const el=$(box);el.innerHTML='';items.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+(String(v)===String(cur)?' on':'');b.textContent=l;b.disabled=!enabled;b.onclick=()=>cb(v);el.appendChild(b)})}
-function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);if(mine&&!mine.tier&&ON.tierSentRoom!==r.id){ON.tierSentRoom=r.id;sendLoadout()}
+function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);
   $('#orTitle').textContent=`${r.name} (#${r.id})`;
   $('#orInfo').innerHTML=`${r.mode==='team'?'팀전 (4인 1팀까지)':'개인전'} · 맵 ${MAPNAME[r.map]} · 라운드 ${r.rounds} · 턴 ${r.turn}초 · 문제 ${DATANAME[r.data]} · ${r.slots.length}/${r.max}명`+(r.state==='playing'?' · <b>대전 중</b>':'');
   $('#orHostSet').classList.toggle('hidden',!host||r.state!=='wait');
@@ -225,7 +228,7 @@ $('#orSupply').onclick=()=>openQuiz({title:'보급 받기',goal:3,earn:false,onD
 const TE=window.TankEngine;
 const BT={pmap:new Map(),play:null,lastPos:0,posKey:'',fell:false,aiAim:null,myI:-1};
 const NAMEW=k=>(WEAPONS[k]||WEAPONS.basic).name;
-function sendLoadout(){if(!D)return;const tr=tierOf(D.stats);send({t:'loadout',tier:{name:tr.name,short:tr.short,color:tr.color},up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
+function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
 function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');toast('대전 시작!',1500)}
 
 // 서버와 같은 맵을 만들고, 혼자 하기와 같은 색으로 칠한다
@@ -406,11 +409,13 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   const st=m.standings;const mine=st.findIndex(s=>s.uid===ON.you.id);let my=mine+1;const n=st.length;
   let honor=my===1?30:my===2?12:my===3?4:0;if(my===n&&n>1)honor=-8;
   const myTeam=G.me.team;if(G.teamMode){const w=m.teamWins[0]===m.teamWins[1]?-1:(m.teamWins[0]>m.teamWins[1]?0:1);my=w===myTeam?1:2;honor=w===myTeam?25:w===-1?8:-5}
-  const before=tierOf(D.stats);D.honor=Math.max(0,D.honor+honor);if(D.stats.beat===undefined)D.stats.beat=D.stats.wins;
+  D.honor=Math.max(0,D.honor+honor);if(D.stats.beat===undefined)D.stats.beat=D.stats.wins;
   const w0=m.teamWins[0]===m.teamWins[1];const beat=G.teamMode?(w0?0.5:(my===1?1:0)):(n>1?(n-my)/(n-1):0);
-  D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();const after=tierOf(D.stats);sendLoadout();
+  D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();
+  const RT=(m.ratings||{})[ON.you.id];const before=RT?RT.before:ON.you.tier||{name:'배치 중',color:'#9aa3ad',r:1000},after=RT?RT.after:before;if(RT)ON.you.tier=after;
   $('#fnRank').textContent=G.teamMode?(m.teamWins[0]===m.teamWins[1]?'무승부':(my===1?'팀 승리!':'팀 패배')):my+'등';
-  $('#fnSub').innerHTML=`티어 ${tierBadge(after)}<br>누적 경험치 +${after.acc-before.acc} · 승률 경험치 ${after.winXP-before.winXP>=0?'+':''}${after.winXP-before.winXP} → 최종 경험치 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
+  const chg=after.name!==before.name;const up=(after.tier||0)*4+(after.div||0)>(before.tier||0)*4+(before.div||0);
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)}`+(chg?` (${before.name} → ${after.name})`:'')+`<br>실력 점수 ${before.r} → ${after.r} (${RT&&RT.d>=0?'+':''}${RT?RT.d:0})`+(after.rank?` · 전체 ${after.of}명 중 ${after.rank}등 (상위 ${after.top}%)`:after.need?` · 배치 경기 ${after.games}/${after.need}`:'')+`<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(chg?(before.name==='배치 중'?`<br><span class="badge">배치 완료! ${after.name}</span>`:`<br><span class="badge">${up?'티어 상승!':'티어 하락…'} ${after.name}</span>`):'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
@@ -444,5 +449,11 @@ window.__onBattle=function(m){switch(m.t){
   case 'b_match_end':onMatchEnd(m);break;
   case 'b_sync':onSync(m);break;
 }};
+function showBoard(m){let html=`<div class="on-board"><div class="row" style="justify-content:space-between"><b>🏆 실시간 순위표</b><button class="chip" id="obClose">닫기</button></div>
+  <div class="sub">티어는 전체 플레이어 중 내 실력 점수 위치로 정해져요. 아이언 하위 10% · 브론즈 다음 20% · 실버 25% · 골드 20% · 플래티넘 13% · 다이아몬드 8% · 마스터 상위 4%. 배치 3경기를 해야 티어가 생겨요.</div><table class="tbl">`;
+  m.board.forEach(p=>html+=`<tr><td>${p.rank}등</td><td>${tierBadge(p)}</td><td class="${p.name===me?'me':''}">${esc(p.name)}</td><td class="n">${p.r}</td><td class="n">${p.games}경기 ${p.wins}승</td></tr>`);
+  if(!m.board.length)html+='<tr><td>아직 배치를 마친 사람이 없어요.</td></tr>';
+  html+='</table></div>';let d=$('#onBoardWrap');if(!d){d=document.createElement('div');d.id='onBoardWrap';document.body.appendChild(d)}d.innerHTML=html;d.classList.remove('hidden');$('#obClose').onclick=()=>d.classList.add('hidden')}
+$('#olRank').style.cursor='pointer';$('#olRank').onclick=()=>send({t:'rank'});
 window.__gtOnline={BT,ON};
 })();
