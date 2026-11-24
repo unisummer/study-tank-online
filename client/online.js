@@ -34,7 +34,7 @@ const css=`
 const st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
 const html=`
 <div id="onChoose" class="card hidden">
-  <h3 style="margin-top:0">🌐 온라인으로 함께 하기</h3>
+  <div class="row" style="justify-content:space-between"><b>🌐 멀티 플레이 (친구들과 온라인)</b><button class="chip" id="bTitleBack2">← 처음으로</button></div>
   <div class="sub">친구들과 방을 만들어 대전해요. 온라인 골드·장비는 혼자 하기와 따로예요.</div>
   <label class="f">이름</label><input class="inp" id="onName" maxlength="12" autocomplete="off">
   <label class="f">내 비밀번호 (처음이면 지금 정하면 돼요)</label><input class="inp" id="onPw" type="password" maxlength="30" autocomplete="off">
@@ -44,7 +44,7 @@ const html=`
 </div>
 <div id="sOnLobby" class="screen hidden"><div class="wrap">
   <div class="row" style="justify-content:space-between">
-    <div><h1 style="font-size:28px">공부하는 탱크 <span class="on-badge">온라인</span></h1><div class="sub" id="olWho"></div></div>
+    <div><h1 style="font-size:28px">탱크 <span class="on-badge">온라인</span></h1><div class="sub" id="olWho"></div></div>
     <div style="text-align:right"><div class="goldtag" style="font-size:22px" id="olGold">0G</div><div class="sub" id="olRank"></div></div>
   </div>
   <div class="row" style="margin-top:10px">
@@ -91,10 +91,10 @@ const html=`
   <div class="row" style="margin-top:6px;flex-wrap:nowrap"><input class="inp" id="orText" maxlength="120" placeholder="방 채팅"><button class="btn" id="orSend">보내기</button></div>
 </div></div>`;
 document.body.insertAdjacentHTML('beforeend',html);
-$('#sLogin .card').after($('#onChoose'));
+$('#singleCard').after($('#onChoose'));$('#bTitleBack2').onclick=()=>showTitle();
 
 /* ---------- 서버에서 열렸는지 확인 ---------- */
-fetch('/healthz',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{if(j&&j.ok){$('#onChoose').classList.remove('hidden');const last=localStorageGet('gt_on_last');if(last)$('#onName').value=last}}).catch(()=>{});
+fetch('/healthz',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{if(j&&j.ok){window.ONLINE_AVAILABLE=true;const last=localStorageGet('gt_on_last');if(last)$('#onName').value=last}}).catch(()=>{});
 function localStorageGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function localStorageSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 
