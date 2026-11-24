@@ -132,8 +132,7 @@ function genWorld(seed, kind, nTanks) {
       }
       if (r.spawn) valleys.push({ x: Math.round(r.cx), y: Math.round(floorY) - 1 });
     }
-    // 맨 아래 낮은 땅 (떨어져도 바로 탈락하지 않게)
-    const ph = rand(0, 6); for (let x = 0; x < WW; x++) col(x, WH * 0.9 + Math.sin(x / 160 + ph) * 22, WH - 1, 1);
+    // 아래는 물 — 떨어지면 탈락
   } else { // towers
     const gy = WH * 0.84; let x = 0;
     while (x < WW) { const w = rand(380, 700); for (let xx = Math.round(x); xx <= Math.min(WW - 1, x + w); xx++) col(xx, gy + Math.sin(xx / 80) * 14, WH - 1, 1); x += w + rand(140, 230); }
@@ -145,7 +144,7 @@ function genWorld(seed, kind, nTanks) {
       if (i < k - 1 && R() < 0.6) { const nx = (i + 1.5) / k * WW; plank(tx + tw / 2, ty + rand(0, 60), Math.max(60, nx - tx - tw), 18); }
     }
   }
-  const bedrockY = (kind === 'hills' || kind === 'scorched' || kind === 'donuts' || kind === 'sphinx') ? WH - 40 : 99999;
+  const bedrockY = (kind === 'hills' || kind === 'scorched' || kind === 'sphinx') ? WH - 40 : 99999;
   if (bedrockY < WH) rect(0, bedrockY, WW, WH - bedrockY, 2);
   const solid = new Uint8Array(WW * WH); for (let i = 0; i < mat.length; i++) solid[i] = mat[i] ? 1 : 0;
   return { WW, WH, mat, solid, kind, valleys, bedrockY, themeIdx, seed, nukeR: Math.round(WW / 6), R };

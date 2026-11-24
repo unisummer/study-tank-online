@@ -299,7 +299,7 @@ function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
       t.hp=e.hp;addText(t.x+rand(-8,8),t.y-44,'-'+e.d,'#ff6b6b',1.2,20);break;
     case 'ff':if(e.by===BT.myI)addText(t.x,t.y-60,'아군이에요!','#ffb3b3',1,14);break;
     case 'kill':{if(!t)break;t.alive=false;t.hp=0;const k=G.tanks[e.by];if(k&&k!==t){k.roundKills++;k.p.kills++}
-      if(e.why==='fall')addText(t.x,Math.min(t.y,WH-40),'추락!','#fff',1.4,22);
+      if(e.why==='fall'){addText(t.x,WH-40,'풍덩! 물에 빠졌어요','#bfe9ff',1.6,22);for(let i=0;i<24;i++)G.parts.push({x:t.x,y:WH-10,vx:rand(-140,140),vy:rand(-320,-120),life:0.8,max:0.8,size:rand(3,7),color:'#bfe9ff',grav:600})}
       addText(t.x,Math.min(t.y,WH-40)-70,t===G.me?'내 탱크 격파…':'격파!','#fff',1.6,24);G.shake=16;sfx('bigboom');
       for(let i=0;i<50;i++){const a=rand(0,7),s=rand(60,380);G.parts.push({x:t.x,y:Math.min(t.y,WH)-10,vx:Math.cos(a)*s,vy:Math.sin(a)*s-100,life:rand(0.6,1.2),max:1.2,size:rand(3,9),color:i%3?t.color:'#ffb347',grav:400})}break}
     case 'split':addText(e.x,e.y-(e.big?30:20),e.big?'대분열!!':'분열!',e.big?'#ffd43b':'#fff',e.big?1.2:0.8,e.big?26:16);if(e.big)G.shake=8;break;

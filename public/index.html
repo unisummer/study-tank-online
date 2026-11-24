@@ -579,7 +579,7 @@ const MAPS={
  canyon:{name:'절벽 계곡',desc:'높은 절벽 사이 깊은 계곡과 얇은 다리'},
  towers:{name:'탑과 다리',desc:'돌탑과 매달린 발판, 땅 곳곳의 구덩이'},
  scorched:{name:'스코치드 협곡',desc:'높은 산 사이 깊은 골짜기마다 탱크 한 대씩! 산을 부수며 싸워요'},
- donuts:{name:'도넛 섬',desc:'하늘 가득 도넛 모양 땅! 저마다 도넛 안에서 시작해요. 껍질을 부수고 나가 싸워요'},
+ donuts:{name:'도넛 섬',desc:'하늘 가득 도넛 모양 땅! 저마다 도넛 안에서 시작해요. 껍질을 부수고 나가 싸워요. 아래는 물이라 빠지면 탈락!'},
  sphinx:{name:'스핑크스 계단',desc:'양쪽 끝이 계단처럼 솟고 가운데는 넓게 파인 이집트 맵. 높은 계단이 유리해요'},
  logbridge:{name:'외나무다리',desc:'양쪽 절벽 사이에 얇은 외나무다리 하나! 다리가 끊어지면 아래로 떨어져요'},
  island:{name:'구름 섬',desc:'가운데 초가집이 있는 섬, 양옆은 몽실몽실 구름 발판'},
@@ -696,7 +696,7 @@ function genTerrain(th,kind,nTanks){
       c.save();c.beginPath();c.arc(r.cx,r.cy,r.ro,0,Math.PI*2);c.arc(r.cx,r.cy,ri,0,Math.PI*2,true);c.fill('evenodd');
       c.beginPath();c.arc(r.cx,r.cy,ri,0,Math.PI*2);c.clip();c.fillRect(r.cx-ri,floorY,ri*2,ri);c.restore();
       if(r.spawn)valleys.push({x:Math.round(r.cx),y:Math.round(floorY)-1})}
-    const ph=rand(0,6);c.beginPath();c.moveTo(0,WH);for(let x=0;x<=WW;x+=6)c.lineTo(x,WH*0.9+Math.sin(x/160+ph)*22);c.lineTo(WW,WH);c.fill();
+    // 아래는 물 — 떨어지면 탈락
   }else{ // towers
     const gy=WH*0.84;c.fillStyle=MAT.earth;let x=0;
     while(x<WW){const w=rand(380,700);c.beginPath();c.moveTo(x,WH);for(let xx=x;xx<=Math.min(WW,x+w);xx+=8)c.lineTo(xx,gy+Math.sin(xx/80)*14);c.lineTo(Math.min(WW,x+w),WH);c.fill();x+=w+rand(140,230)}
@@ -706,7 +706,7 @@ function genTerrain(th,kind,nTanks){
       for(let y=ty+40;y<gy-90;y+=rand(130,180)){const side=Math.random()<0.5?-1:1;const pw=rand(120,200);plank(c,side<0?tx-tw/2-pw:tx+tw/2,y,pw,20)}
       if(i<k-1&&Math.random()<0.6){const nx=(i+1.5)/k*WW;plank(c,tx+tw/2,ty+rand(0,60),Math.max(60,nx-tx-tw),18)}}
   }
-  bedrockY=(kind==='hills'||kind==='scorched'||kind==='donuts'||kind==='sphinx')?WH-40:99999;
+  bedrockY=(kind==='hills'||kind==='scorched'||kind==='sphinx')?WH-40:99999;
   if(bedrockY<WH){c.fillStyle=MAT.stone;c.fillRect(0,bedrockY,WW,WH-bedrockY)}
   // 그린 모양 → 단단한 땅 정보 + 색칠
   const img=c.getImageData(0,0,WW,WH),d=img.data;solid=new Uint8Array(WW*WH);
@@ -962,7 +962,7 @@ function tankPhysics(t,dt){
     if(t.vy<0)t.peak=Math.min(t.peak,t.y);
     if(t.vx){const nx=t.x+t.vx*dt;if(!isSolid(nx,t.y-6)&&!isSolid(nx,t.y-18))t.x=nx;else t.vx=0}
     if(t.x<=12||t.x>=WW-12)t.vx=0;
-    if(t.y>WH+30){t.lastHit=t.lastHit||null;addText(t.x,WH-40,'추락!','#fff',1.4,22);killTank(t)}
+    if(t.y>WH+30){t.lastHit=t.lastHit||null;addText(t.x,WH-40,'풍덩! 물에 빠졌어요','#bfe9ff',1.6,22);for(let i=0;i<24;i++)G.parts.push({x:t.x,y:WH-10,vx:rand(-140,140),vy:rand(-320,-120),life:0.8,max:0.8,size:rand(3,7),color:'#bfe9ff',grav:600});killTank(t)}
   }
   t.x=clamp(t.x,12,WW-12);
 }
@@ -1241,7 +1241,11 @@ function render(){
   drawSky();
   const s=sc();const shx=G&&G.shake?rand(-G.shake,G.shake):0,shy=G&&G.shake?rand(-G.shake,G.shake):0;
   ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(s,s);ctx.translate(-cam.x+shx,-cam.y+shy);
-  ctx.fillStyle='#1d3557';ctx.fillRect(-3000,WH-8,WW+6000,1200);
+  { // 맨 아래 물 (빠지면 탈락) — 출렁이는 물결
+    const wt=performance.now()/1000,wy=WH-8;const g=ctx.createLinearGradient(0,wy-20,0,wy+500);g.addColorStop(0,'#3aa0e0');g.addColorStop(0.25,'#1f6fb2');g.addColorStop(1,'#0d2f57');
+    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-3000,wy+600);for(let x=-3000;x<=WW+3000;x+=40)ctx.lineTo(x,wy-6+Math.sin(x/90+wt*1.6)*6+Math.sin(x/37-wt*2.3)*2);ctx.lineTo(WW+3000,wy+600);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=3;ctx.beginPath();for(let x=-3000;x<=WW+3000;x+=40){const y=wy-6+Math.sin(x/90+wt*1.6)*6+Math.sin(x/37-wt*2.3)*2;x===-3000?ctx.moveTo(x,y):ctx.lineTo(x,y)}ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=2;for(let k=1;k<4;k++){ctx.beginPath();for(let x=-3000;x<=WW+3000;x+=60){const y=wy+k*40+Math.sin(x/120+wt*(1+k*0.3)+k)*4;x===-3000?ctx.moveTo(x,y):ctx.lineTo(x,y)}ctx.stroke()}}
   ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(-3000,-2000,3000,WH+3000);ctx.fillRect(WW,-2000,3000,WH+3000);
   ctx.drawImage(terrain,0,0);
   if(G&&G.tanks){
@@ -1577,8 +1581,7 @@ function genWorld(seed, kind, nTanks) {
       }
       if (r.spawn) valleys.push({ x: Math.round(r.cx), y: Math.round(floorY) - 1 });
     }
-    // 맨 아래 낮은 땅 (떨어져도 바로 탈락하지 않게)
-    const ph = rand(0, 6); for (let x = 0; x < WW; x++) col(x, WH * 0.9 + Math.sin(x / 160 + ph) * 22, WH - 1, 1);
+    // 아래는 물 — 떨어지면 탈락
   } else { // towers
     const gy = WH * 0.84; let x = 0;
     while (x < WW) { const w = rand(380, 700); for (let xx = Math.round(x); xx <= Math.min(WW - 1, x + w); xx++) col(xx, gy + Math.sin(xx / 80) * 14, WH - 1, 1); x += w + rand(140, 230); }
@@ -1590,7 +1593,7 @@ function genWorld(seed, kind, nTanks) {
       if (i < k - 1 && R() < 0.6) { const nx = (i + 1.5) / k * WW; plank(tx + tw / 2, ty + rand(0, 60), Math.max(60, nx - tx - tw), 18); }
     }
   }
-  const bedrockY = (kind === 'hills' || kind === 'scorched' || kind === 'donuts' || kind === 'sphinx') ? WH - 40 : 99999;
+  const bedrockY = (kind === 'hills' || kind === 'scorched' || kind === 'sphinx') ? WH - 40 : 99999;
   if (bedrockY < WH) rect(0, bedrockY, WW, WH - bedrockY, 2);
   const solid = new Uint8Array(WW * WH); for (let i = 0; i < mat.length; i++) solid[i] = mat[i] ? 1 : 0;
   return { WW, WH, mat, solid, kind, valleys, bedrockY, themeIdx, seed, nukeR: Math.round(WW / 6), R };
@@ -2133,7 +2136,7 @@ function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
       t.hp=e.hp;addText(t.x+rand(-8,8),t.y-44,'-'+e.d,'#ff6b6b',1.2,20);break;
     case 'ff':if(e.by===BT.myI)addText(t.x,t.y-60,'아군이에요!','#ffb3b3',1,14);break;
     case 'kill':{if(!t)break;t.alive=false;t.hp=0;const k=G.tanks[e.by];if(k&&k!==t){k.roundKills++;k.p.kills++}
-      if(e.why==='fall')addText(t.x,Math.min(t.y,WH-40),'추락!','#fff',1.4,22);
+      if(e.why==='fall'){addText(t.x,WH-40,'풍덩! 물에 빠졌어요','#bfe9ff',1.6,22);for(let i=0;i<24;i++)G.parts.push({x:t.x,y:WH-10,vx:rand(-140,140),vy:rand(-320,-120),life:0.8,max:0.8,size:rand(3,7),color:'#bfe9ff',grav:600})}
       addText(t.x,Math.min(t.y,WH-40)-70,t===G.me?'내 탱크 격파…':'격파!','#fff',1.6,24);G.shake=16;sfx('bigboom');
       for(let i=0;i<50;i++){const a=rand(0,7),s=rand(60,380);G.parts.push({x:t.x,y:Math.min(t.y,WH)-10,vx:Math.cos(a)*s,vy:Math.sin(a)*s-100,life:rand(0.6,1.2),max:1.2,size:rand(3,9),color:i%3?t.color:'#ffb347',grav:400})}break}
     case 'split':addText(e.x,e.y-(e.big?30:20),e.big?'대분열!!':'분열!',e.big?'#ffd43b':'#fff',e.big?1.2:0.8,e.big?26:16);if(e.big)G.shake=8;break;
