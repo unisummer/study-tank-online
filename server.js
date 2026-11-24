@@ -128,7 +128,7 @@ const MAPS = ['random', 'hills', 'sky', 'canyon', 'towers', 'scorched'];
 const DATAS = ['phon', 'add1', 'add2', 'sub1', 'gugu', 'free'];
 function roomView(r) {
   return { id: r.id, name: r.name, host: r.host, max: r.max, mode: r.mode, map: r.map, rounds: r.rounds, data: r.data, turn: r.turn, state: r.state,
-    slots: r.slots.map(s => ({ uid: s.uid || 0, name: s.name, team: s.team, ready: !!s.ready, ai: !!s.ai, away: !!s.away })) };
+    slots: r.slots.map(s => ({ uid: s.uid || 0, name: s.name, team: s.team, ready: !!s.ready, ai: !!s.ai, away: !!s.away, tier: s.tier || null })) };
 }
 function lobbyView(ch) { return [...ROOMS.values()].filter(r => r.channel === ch).map(r => ({ id: r.id, name: r.name, n: r.slots.filter(s => !s.ai).length, ai: r.slots.filter(s => s.ai).length, max: r.max, mode: r.mode, map: r.map, data: r.data, state: r.state })); }
 function pushLobby(ch) { bcChannel(ch, { t: 'rooms', rooms: lobbyView(ch), online: onlineList(ch) }); }
@@ -216,7 +216,9 @@ function onMsg(c, info, raw) {
       });
       return;
     }
-    case 'loadout': if (r) { r.loadouts = r.loadouts || {}; const up = m.up || {}; r.loadouts[info.uid] = { up: { armor: +up.armor | 0, barrel: +up.barrel | 0, engine: +up.engine | 0 }, startShield: !!m.startShield }; } return;
+    case 'loadout': if (r) { r.loadouts = r.loadouts || {}; const up = m.up || {}; const tr = m.tier || {}; const tier = { name: String(tr.name || '').slice(0, 12), short: String(tr.short || '').slice(0, 3), color: /^#[0-9a-f]{3,6}$/i.test(tr.color || '') ? tr.color : '#9aa3ad' };
+      r.loadouts[info.uid] = { up: { armor: +up.armor | 0, barrel: +up.barrel | 0, engine: +up.engine | 0 }, startShield: !!m.startShield, tier };
+      const sl = r.slots.find(s => s.uid === info.uid); if (sl) { const had = sl.tier && sl.tier.name; sl.tier = tier; if (had !== tier.name) pushRoom(r); } } return;
     case 'b_pos': if (r && r.battle) r.battle.onPos(info.uid, m); return;
     case 'b_item': if (r && r.battle) r.battle.onItem(info.uid, m); return;
     case 'b_fire': if (r && r.battle) r.battle.onFire(info.uid, m); return;

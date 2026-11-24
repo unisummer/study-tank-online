@@ -98,6 +98,7 @@ table.res .n{text-align:right}
 .bigrank{font-size:56px;font-weight:900;color:#ffd43b;line-height:1}
 .profile-list .chip{background:#22365a}
 @media (max-height:430px){.screen{padding-top:10px}h1{font-size:26px}.btn.big{font-size:19px;padding:12px 22px}.qtext{font-size:18px;margin:8px 0 10px}.qchoices button{min-height:48px;padding:10px;font-size:16px}}
+.tier{display:inline-block;padding:2px 8px;border-radius:999px;font-weight:800;font-size:12px;color:#111;background:var(--tc);box-shadow:inset 0 -2px 0 rgba(0,0,0,.25)}
 </style>
 </head>
 <body>
@@ -318,7 +319,7 @@ function hashStr(s){let h=2166136261;for(const ch of s){h^=ch.codePointAt(0);h=M
 const DEFAULT_DATA=()=>({gold:300,honor:0,up:{barrel:0,armor:0,engine:0},
   ammo:{scatter:3,big:1,dig:2,mirv:0,roller:1,dirtS:2,dirt:1,dirtL:0,triple:0,leap:0,napalm:0,air:0,death:0,nuke:0},
   items:{repairS:1,repair:0,repairL:0,scope:1,double:0,shield:0,chute:1,tele:0,warp:1,spider:1},
-  stats:{games:0,wins:0,kills:0,qRight:0,qTotal:0,made:0},
+  stats:{games:0,wins:0,beat:0,kills:0,qRight:0,qTotal:0,made:0},
   qDay:'',qToday:0,madeDay:'',madeToday:0,
   set:{anywhere:false,sound:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4}});
 function merge(base,o){for(const k in o){const v=o[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&base[k]&&typeof base[k]==='object')merge(base[k],v);else base[k]=v}return base}
@@ -332,6 +333,20 @@ const HIDE_AT=5;
 
 /* ---------- 계급 ---------- */
 const RANKS=[['훈련병',0],['이병',40],['일병',100],['상병',180],['병장',280],['하사',400],['중사',540],['상사',700],['소위',880],['중위',1080],['대위',1300],['소령',1550],['중령',1830],['대령',2140],['준장',2480],['소장',2850],['중장',3250],['대장',3700],['원수',4200]];
+/* 티어 (롤 티어표 참고): 누적 경기 수(경험) + 상대를 이긴 비율(승률)로 정해짐 */
+const TIERS=[['아이언','I','#8a8f98',0],['브론즈','B','#c0773f',100],['실버','S','#b9c6d3',300],['골드','G','#f2c94c',550],['플래티넘','P','#3fd1b5',850],['다이아몬드','D','#6fa8ff',1200],['마스터','M','#c77dff',1650]];
+const DIVS=['IV','III','II','I'];
+function tierPoints(st){st=st||{};const g=st.games|0;if(!g)return 0;
+  const avg=(st.beat!==undefined?st.beat:(st.wins|0))/g;           // 상대를 이긴 비율 0~1 (1등=1, 꼴찌=0, 팀 승리=1)
+  const exp=5*Math.min(g,240);                                         // 경험: 한 경기 5점, 최대 1200점
+  const skill=Math.max(0,Math.min(1,(avg-0.35)/0.4))*1000*Math.min(1,g/15); // 승률: 최대 1000점 (15경기부터 온전히 반영)
+  return Math.round(exp+skill)}
+function tierOf(st){const tp=tierPoints(st);let i=0;for(let k=0;k<TIERS.length;k++)if(tp>=TIERS[k][3])i=k;const T=TIERS[i],N=TIERS[i+1];
+  let div=-1,next=null,lo=T[3],hi=N?N[3]:null;
+  if(N){const step=(N[3]-T[3])/4;div=Math.min(3,Math.floor((tp-T[3])/step));lo=T[3]+step*div;hi=lo+step;next=div<3?`${T[0]} ${DIVS[div+1]}`:N[0]}
+  const g=(st&&st.games)|0;const wr=g?Math.round(((st.beat!==undefined?st.beat:st.wins)||0)/g*100):0;
+  return {i,name:T[0]+(div>=0?' '+DIVS[div]:''),short:T[1]+(div>=0?4-div:''),color:T[2],tp,next,toNext:hi===null?0:Math.ceil(hi-tp),prog:hi===null?1:(tp-lo)/(hi-lo),games:g,wr}}
+function tierBadge(t){return `<span class="tier" style="--tc:${t.color}">${t.name}</span>`}
 function rankOf(h){let i=0;for(let k=0;k<RANKS.length;k++)if(h>=RANKS[k][1])i=k;return i}
 
 /* ---------- 문제 데이터 ---------- */
@@ -960,10 +975,12 @@ function finalResult(){
   const ps=G.players.slice().sort((a,b)=>b.points-a.points||b.kills-a.kills);let my=ps.findIndex(p=>!p.isAI)+1;const n=ps.length;
   let hon=my===1?30:my===2?12:my===3?4:0;let honor=(my===n&&n>1)?-8:hon;
   if(G.teamMode){const w=G.teamWins[0]===G.teamWins[1]?-1:(G.teamWins[0]>G.teamWins[1]?0:1);my=w===0?1:2;honor=w===0?25:w===-1?8:-5}
-  const before=rankOf(D.honor);D.honor=Math.max(0,D.honor+honor);const after=rankOf(D.honor);
-  D.stats.games++;if(my===1)D.stats.wins++;D.stats.kills+=G.players[0].kills;saveNow();
+  const before=tierOf(D.stats);D.honor=Math.max(0,D.honor+honor);
+  if(D.stats.beat===undefined)D.stats.beat=D.stats.wins;
+  const beat=G.teamMode?(my===1?1:G.teamWins[0]===G.teamWins[1]?0.5:0):(n>1?(n-my)/(n-1):0);
+  D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=G.players[0].kills;saveNow();const after=tierOf(D.stats);
   $('#fnRank').textContent=G.teamMode?(G.teamWins[0]>G.teamWins[1]?'팀 승리!':G.teamWins[0]===G.teamWins[1]?'무승부':'팀 패배'):my+'등';
-  $('#fnSub').innerHTML=`명예 ${honor>=0?'+':''}${honor} → ${D.honor}점<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after>before?`<br><span class="badge">계급 상승! ${RANKS[after][0]}</span>`:'');
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)} · 티어 점수 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   ps.forEach((p,i)=>html+=`<tr><td class="${p.isAI?'':'me'}">${i+1}. ${escapeHtml(p.name)}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;showScreen('#sFinal');
@@ -1095,9 +1112,28 @@ function drawTank(t){
   const s=sc();const fs=Math.max(11,13/s*0.75);ctx.font=`700 ${fs}px system-ui`;ctx.textAlign='center';
   const bw=40,bx=t.x-bw/2,by=t.y-36;ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(bx-1,by-1,bw+2,7);
   const r=t.hp/t.hpMax;ctx.fillStyle=r>0.5?'#4cd97b':r>0.25?'#ffd43b':'#ff5a5f';ctx.fillRect(bx,by,bw*r,5);
-  ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';ctx.strokeText(t.name,t.x,by-5);ctx.fillStyle=G.teamMode?(t.team===0?'#9fd4ff':'#ffb0b0'):(t===G.me?'#bfe2ff':'#fff');ctx.fillText(t.name,t.x,by-5);
+  drawNameTag(t,t.x,t.y+16,s);
   if(G.cur===t&&G.state==='aim'){const bob=Math.sin(performance.now()/180)*4;ctx.fillStyle='#ffd43b';ctx.beginPath();ctx.moveTo(t.x-7,by-28+bob);ctx.lineTo(t.x+7,by-28+bob);ctx.lineTo(t.x,by-19+bob);ctx.fill()}
 }
+// 이름표: 탱크 아래에 진한 색 띠(팀전=팀 색, 개인전=탱크 색) + 흰 글자 + 티어 배지. 내 탱크는 노란 테두리
+function nameTagTier(t){if(t.isAI&&!t.uid)return {short:'AI',color:'#9aa3ad'};if(t.tier)return t.tier;if(t===G.me&&!G.online)return tierOf(D.stats);return {short:'?',color:'#9aa3ad'}}
+function drawNameTag(t,x,y,s){const fs=Math.max(13,17.5/s*0.8);const pad=fs*0.45,h=fs*1.5;
+  ctx.font=`800 ${fs}px system-ui`;const nw=ctx.measureText(t.name).width;
+  const tr=nameTagTier(t);ctx.font=`900 ${fs*0.8}px system-ui`;const bw=ctx.measureText(tr.short).width+pad*1.4;
+  const w=bw+nw+pad*3,x0=x-w/2,y0=y;
+  const base=G.teamMode?(t.team===0?'#1f63c9':'#c9302c'):t.color;
+  ctx.save();ctx.globalAlpha=t.alive?1:0.5;
+  rr(x0,y0,w,h,h/2);ctx.fillStyle='rgba(10,14,24,.88)';ctx.fill();
+  rr(x0+1.5,y0+1.5,w-3,h-3,h/2-1.5);ctx.fillStyle=base;ctx.globalAlpha*=0.55;ctx.fill();ctx.globalAlpha=t.alive?1:0.5;
+  ctx.lineWidth=t===G.me?Math.max(2,3/s*0.8):1.5;ctx.strokeStyle=t===G.me?'#ffd43b':'rgba(255,255,255,.55)';rr(x0,y0,w,h,h/2);ctx.stroke();
+  // 티어 배지
+  rr(x0+pad*0.6,y0+h*0.16,bw,h*0.68,h*0.34);ctx.fillStyle=tr.color;ctx.fill();
+  ctx.fillStyle='#111';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`900 ${fs*0.8}px system-ui`;ctx.fillText(tr.short,x0+pad*0.6+bw/2,y0+h/2+1);
+  // 이름
+  ctx.font=`800 ${fs}px system-ui`;ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.7)';const nx=x0+pad*0.6+bw+pad*1.2+nw/2;
+  ctx.strokeText(t.name,nx,y0+h/2+1);ctx.fillStyle='#fff';ctx.fillText(t.name,nx,y0+h/2+1);
+  ctx.textBaseline='alphabetic';ctx.restore();
+  function rr(a,b,c,d,r){ctx.beginPath();ctx.moveTo(a+r,b);ctx.arcTo(a+c,b,a+c,b+d,r);ctx.arcTo(a+c,b+d,a,b+d,r);ctx.arcTo(a,b+d,a,b,r);ctx.arcTo(a,b,a+c,b,r);ctx.closePath()}}
 function drawAimPreview(){
   const t=G.me;if(!myAimTurn())return;const showing=aim&&aim.len>10;const ang=showing?aim.ang:t.angle;const pow=showing?aim.pow:(t.lastPow||0);
   if(showing||G.scope){const r=simulate(t,ang,Math.max(5,pow),G.scope?G.wind:0,6,true);const pts=r.pts;const lim=G.scope?pts.length:Math.min(pts.length,22);
@@ -1211,9 +1247,10 @@ function renderLobby(){
   $('#lbGold').textContent=D.gold+'G';
   if(D.qDay!==today()){D.qDay=today();D.qToday=0}
   $('#lbQuizToday').textContent=`오늘 문제 골드 ${D.qToday}/${QCAP}G`;
-  $('#lbRank').textContent=RANKS[ri][0];$('#lbHonor').textContent=`명예 ${D.honor}점`+(next?` · 다음 계급 ${next[0]}까지 ${next[1]-D.honor}점`:'');
-  $('#lbHonorBar').style.width=(next?((D.honor-RANKS[ri][1])/(next[1]-RANKS[ri][1])*100):100)+'%';
-  $('#lbStats').textContent=`전투 ${D.stats.games} · 우승 ${D.stats.wins} · 처치 ${D.stats.kills} · 정답 ${D.stats.qRight}/${D.stats.qTotal}`;
+  const tr=tierOf(D.stats);$('#lbRank').outerHTML=`<span class="tier" id="lbRank" style="--tc:${tr.color}">${tr.name}</span>`;
+  $('#lbHonor').textContent=`티어 점수 ${tr.tp} · 이긴 비율 ${tr.wr}%`+(tr.next?` · ${tr.next}까지 ${tr.toNext}점`:' · 최고 티어!');
+  $('#lbHonorBar').style.width=(tr.prog*100)+'%';void ri;void next;
+  $('#lbStats').textContent=`경기 ${D.stats.games} · 우승 ${D.stats.wins} · 처치 ${D.stats.kills} · 정답 ${D.stats.qRight}/${D.stats.qTotal}`;
   chipRow($('#dataChips'),Object.keys(DATASETS).map(k=>{const S=studentQs(k,false).length;return [k,`${DATASETS[k].name} · ${DATASETS[k].who}`+(S?` · 학생 문제 ${S}`:'')]}),D.set.data,v=>{D.set.data=v;saveNow();renderLobby()});
   const mi=mixInfo(D.set.data);const tTxt=mi.T===Infinity?'자동 생성':mi.T+'개';
   $('#mixInfo').textContent=`지금 섞이는 비율 — 선생님 문제 ${tTxt} : 학생 문제 ${mi.S}개 (학생 문제가 쌓일수록 선생님 문제가 줄어요)`;
@@ -1828,7 +1865,7 @@ const rgv=window.refreshGoldViews;refreshGoldViews=function(){rgv();if(window.ON
 /* ---------- 방 ---------- */
 function showRoom(){hideAllScreens();$('#sOnRoom').classList.remove('hidden')}
 function chipsTo(box,items,cur,cb,enabled){const el=$(box);el.innerHTML='';items.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+(String(v)===String(cur)?' on':'');b.textContent=l;b.disabled=!enabled;b.onclick=()=>cb(v);el.appendChild(b)})}
-function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);
+function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);if(mine&&!mine.tier&&ON.tierSentRoom!==r.id){ON.tierSentRoom=r.id;sendLoadout()}
   $('#orTitle').textContent=`${r.name} (#${r.id})`;
   $('#orInfo').innerHTML=`${r.mode==='team'?'팀전 (4인 1팀까지)':'개인전'} · 맵 ${MAPNAME[r.map]} · 라운드 ${r.rounds} · 턴 ${r.turn}초 · 문제 ${DATANAME[r.data]} · ${r.slots.length}/${r.max}명`+(r.state==='playing'?' · <b>대전 중</b>':'');
   $('#orHostSet').classList.toggle('hidden',!host||r.state!=='wait');
@@ -1842,7 +1879,7 @@ function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id
   for(let i=0;i<r.max;i++){const s=r.slots[i];const d=document.createElement('div');
     if(!s){d.className='on-slot empty';d.textContent='빈자리';box.appendChild(d);continue}
     d.className='on-slot'+(s.ready||s.uid===r.host?' ready':'')+(r.mode==='team'?' t'+s.team:'');
-    d.innerHTML=`<b>${esc(s.name)}</b>${s.uid===r.host?'<span class="on-tag">방장</span>':''}${s.ai?'<span class="on-tag">컴퓨터</span>':''}${s.away?'<span class="on-tag">연결 끊김</span>':''}
+    d.innerHTML=`${s.tier&&!s.ai?tierBadge(s.tier)+' ':''}<b>${esc(s.name)}</b>${s.uid===r.host?'<span class="on-tag">방장</span>':''}${s.ai?'<span class="on-tag">컴퓨터</span>':''}${s.away?'<span class="on-tag">연결 끊김</span>':''}
       <div class="sub">${r.mode==='team'?(s.team===0?'🔵 파랑 팀':'🔴 빨강 팀'):''} ${s.ai?'':s.uid===r.host?'':s.ready?'준비 완료':'기다리는 중'}</div>`;
     if(host&&!s.ai&&s.uid!==ON.you.id&&r.state==='wait'){const k=document.createElement('button');k.className='chip';k.textContent='내보내기';k.style.marginTop='4px';k.onclick=()=>send({t:'kick',uid:s.uid});d.appendChild(k)}
     box.appendChild(d)}
@@ -1865,7 +1902,7 @@ $('#orSupply').onclick=()=>openQuiz({title:'보급 받기',goal:3,earn:false,onD
 const TE=window.TankEngine;
 const BT={pmap:new Map(),play:null,lastPos:0,posKey:'',fell:false,aiAim:null,myI:-1};
 const NAMEW=k=>(WEAPONS[k]||WEAPONS.basic).name;
-function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
+function sendLoadout(){if(!D)return;const tr=tierOf(D.stats);send({t:'loadout',tier:{name:tr.name,short:tr.short,color:tr.color},up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
 function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');toast('대전 시작!',1500)}
 
 // 서버와 같은 맵을 만들고, 혼자 하기와 같은 색으로 칠한다
@@ -1887,7 +1924,7 @@ function buildTerrain(world){
 }
 function mkTank(v,players){const p=players[v.i]||(players[v.i]={name:v.name,points:0,kills:0,dmg:0,isAI:v.isAI});
   return {i:v.i,uid:v.uid,p,team:v.team,name:v.name,color:v.color,isAI:v.isAI,x:v.x,y:v.y,vx:0,vy:0,air:false,peak:v.y,hp:v.hp,hpMax:v.hpMax,alive:v.alive,angle:v.angle,
-    dmgMul:v.dmgMul,fuelMax:v.fuelMax,fuel:0,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,roundKills:v.roundKills||0,lastHit:null,deathOrder:0,tx:v.x,ty:v.y}}
+    dmgMul:v.dmgMul,fuelMax:v.fuelMax,fuel:0,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,roundKills:v.roundKills||0,tier:v.tier||null,lastHit:null,deathOrder:0,tx:v.x,ty:v.y}}
 function setFromView(t,v){Object.assign(t,{x:v.x,y:v.y,tx:v.x,ty:v.y,hp:v.hp,alive:v.alive,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,isAI:v.isAI});if(t!==G.me||G.cur!==G.me)t.angle=v.angle;t.vx=0;t.vy=0;t.air=false}
 
 function onRound(info){
@@ -2046,10 +2083,11 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   const st=m.standings;const mine=st.findIndex(s=>s.uid===ON.you.id);let my=mine+1;const n=st.length;
   let honor=my===1?30:my===2?12:my===3?4:0;if(my===n&&n>1)honor=-8;
   const myTeam=G.me.team;if(G.teamMode){const w=m.teamWins[0]===m.teamWins[1]?-1:(m.teamWins[0]>m.teamWins[1]?0:1);my=w===myTeam?1:2;honor=w===myTeam?25:w===-1?8:-5}
-  const before=rankOf(D.honor);D.honor=Math.max(0,D.honor+honor);const after=rankOf(D.honor);
-  D.stats.games++;if(my===1)D.stats.wins++;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();
+  const before=tierOf(D.stats);D.honor=Math.max(0,D.honor+honor);if(D.stats.beat===undefined)D.stats.beat=D.stats.wins;
+  const w0=m.teamWins[0]===m.teamWins[1];const beat=G.teamMode?(w0?0.5:(my===1?1:0)):(n>1?(n-my)/(n-1):0);
+  D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();const after=tierOf(D.stats);sendLoadout();
   $('#fnRank').textContent=G.teamMode?(m.teamWins[0]===m.teamWins[1]?'무승부':(my===1?'팀 승리!':'팀 패배')):my+'등';
-  $('#fnSub').innerHTML=`명예 ${honor>=0?'+':''}${honor} → ${D.honor}점<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after>before?`<br><span class="badge">계급 상승! ${RANKS[after][0]}</span>`:'');
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)} · 티어 점수 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';

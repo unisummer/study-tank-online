@@ -28,7 +28,7 @@ class Battle {
   bc(o) { this.io.bc(o); }
   loadout(uid) { return (this.room.loadouts && this.room.loadouts[uid]) || {}; }
 
-  tankView(t) { return { i: t.i, uid: t.uid, name: t.name, team: t.team, isAI: t.isAI, color: t.color, x: Math.round(t.x), y: Math.round(t.y), hp: t.hp, hpMax: t.hpMax, alive: t.alive, angle: +t.angle.toFixed(3), shield: !!t.shield, rainbow: t.rainbow || 0, chute: !!t.chute, spider: !!t.spider, rot: +(t.rot || 0).toFixed(2), fuelMax: t.fuelMax, dmgMul: t.dmgMul, roundKills: t.roundKills || 0 }; }
+  tankView(t) { return { i: t.i, uid: t.uid, name: t.name, team: t.team, isAI: t.isAI, color: t.color, x: Math.round(t.x), y: Math.round(t.y), hp: t.hp, hpMax: t.hpMax, alive: t.alive, angle: +t.angle.toFixed(3), shield: !!t.shield, rainbow: t.rainbow || 0, chute: !!t.chute, spider: !!t.spider, rot: +(t.rot || 0).toFixed(2), fuelMax: t.fuelMax, dmgMul: t.dmgMul, roundKills: t.roundKills || 0, tier: t.tier || null }; }
   roundInfo() { return { mapArg: this.room.map, round: this.round, total: this.total, seed: this.seed, kind: this.world.kind, teamMode: this.teamMode, teamWins: this.teamWins, tanks: this.tanks.map(t => this.tankView(t)), crates: this.sim.crates.map(c => ({ id: c.id, x: c.x, y: c.y })), turnSec: this.turnSec, data: this.room.data }; }
 
   startRound() {
@@ -50,7 +50,7 @@ class Battle {
       const hpMax = Math.round(100 * (1 + 0.03 * armor));
       return { i, uid: p.uid, name: p.name, team: p.team, isAI: p.ai, color: p.color, x: spawns[i].x, y: spawns[i].y, vx: 0, vy: 0, air: false, peak: 0,
         hp: hpMax, hpMax, alive: true, angle: spawns[i].x < this.world.WW / 2 ? -Math.PI / 4 : -Math.PI * 3 / 4, dmgMul: 1 + 0.03 * barrel, fuelMax: 100 * (1 + 0.03 * engine),
-        shield: !!lo.startShield && !p.ai, rainbow: 0, chute: false, spider: false, rot: 0, roundKills: 0, ammo: p.ai ? AI_AMMO() : null };
+        shield: !!lo.startShield && !p.ai, tier: p.uid ? (lo.tier || null) : null, rainbow: 0, chute: false, spider: false, rot: 0, roundKills: 0, ammo: p.ai ? AI_AMMO() : null };
     });
     this.sim = E.makeSim(this.world, this.tanks, { teamMode: this.teamMode });
     this.roundGold = {}; this.ops = []; this.cycle = 1;

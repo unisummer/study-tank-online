@@ -188,7 +188,7 @@ const rgv=window.refreshGoldViews;refreshGoldViews=function(){rgv();if(window.ON
 /* ---------- 방 ---------- */
 function showRoom(){hideAllScreens();$('#sOnRoom').classList.remove('hidden')}
 function chipsTo(box,items,cur,cb,enabled){const el=$(box);el.innerHTML='';items.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+(String(v)===String(cur)?' on':'');b.textContent=l;b.disabled=!enabled;b.onclick=()=>cb(v);el.appendChild(b)})}
-function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);
+function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);if(mine&&!mine.tier&&ON.tierSentRoom!==r.id){ON.tierSentRoom=r.id;sendLoadout()}
   $('#orTitle').textContent=`${r.name} (#${r.id})`;
   $('#orInfo').innerHTML=`${r.mode==='team'?'팀전 (4인 1팀까지)':'개인전'} · 맵 ${MAPNAME[r.map]} · 라운드 ${r.rounds} · 턴 ${r.turn}초 · 문제 ${DATANAME[r.data]} · ${r.slots.length}/${r.max}명`+(r.state==='playing'?' · <b>대전 중</b>':'');
   $('#orHostSet').classList.toggle('hidden',!host||r.state!=='wait');
@@ -202,7 +202,7 @@ function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id
   for(let i=0;i<r.max;i++){const s=r.slots[i];const d=document.createElement('div');
     if(!s){d.className='on-slot empty';d.textContent='빈자리';box.appendChild(d);continue}
     d.className='on-slot'+(s.ready||s.uid===r.host?' ready':'')+(r.mode==='team'?' t'+s.team:'');
-    d.innerHTML=`<b>${esc(s.name)}</b>${s.uid===r.host?'<span class="on-tag">방장</span>':''}${s.ai?'<span class="on-tag">컴퓨터</span>':''}${s.away?'<span class="on-tag">연결 끊김</span>':''}
+    d.innerHTML=`${s.tier&&!s.ai?tierBadge(s.tier)+' ':''}<b>${esc(s.name)}</b>${s.uid===r.host?'<span class="on-tag">방장</span>':''}${s.ai?'<span class="on-tag">컴퓨터</span>':''}${s.away?'<span class="on-tag">연결 끊김</span>':''}
       <div class="sub">${r.mode==='team'?(s.team===0?'🔵 파랑 팀':'🔴 빨강 팀'):''} ${s.ai?'':s.uid===r.host?'':s.ready?'준비 완료':'기다리는 중'}</div>`;
     if(host&&!s.ai&&s.uid!==ON.you.id&&r.state==='wait'){const k=document.createElement('button');k.className='chip';k.textContent='내보내기';k.style.marginTop='4px';k.onclick=()=>send({t:'kick',uid:s.uid});d.appendChild(k)}
     box.appendChild(d)}
@@ -225,7 +225,7 @@ $('#orSupply').onclick=()=>openQuiz({title:'보급 받기',goal:3,earn:false,onD
 const TE=window.TankEngine;
 const BT={pmap:new Map(),play:null,lastPos:0,posKey:'',fell:false,aiAim:null,myI:-1};
 const NAMEW=k=>(WEAPONS[k]||WEAPONS.basic).name;
-function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
+function sendLoadout(){if(!D)return;const tr=tierOf(D.stats);send({t:'loadout',tier:{name:tr.name,short:tr.short,color:tr.color},up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
 function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');toast('대전 시작!',1500)}
 
 // 서버와 같은 맵을 만들고, 혼자 하기와 같은 색으로 칠한다
@@ -247,7 +247,7 @@ function buildTerrain(world){
 }
 function mkTank(v,players){const p=players[v.i]||(players[v.i]={name:v.name,points:0,kills:0,dmg:0,isAI:v.isAI});
   return {i:v.i,uid:v.uid,p,team:v.team,name:v.name,color:v.color,isAI:v.isAI,x:v.x,y:v.y,vx:0,vy:0,air:false,peak:v.y,hp:v.hp,hpMax:v.hpMax,alive:v.alive,angle:v.angle,
-    dmgMul:v.dmgMul,fuelMax:v.fuelMax,fuel:0,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,roundKills:v.roundKills||0,lastHit:null,deathOrder:0,tx:v.x,ty:v.y}}
+    dmgMul:v.dmgMul,fuelMax:v.fuelMax,fuel:0,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,roundKills:v.roundKills||0,tier:v.tier||null,lastHit:null,deathOrder:0,tx:v.x,ty:v.y}}
 function setFromView(t,v){Object.assign(t,{x:v.x,y:v.y,tx:v.x,ty:v.y,hp:v.hp,alive:v.alive,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,isAI:v.isAI});if(t!==G.me||G.cur!==G.me)t.angle=v.angle;t.vx=0;t.vy=0;t.air=false}
 
 function onRound(info){
@@ -406,10 +406,11 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   const st=m.standings;const mine=st.findIndex(s=>s.uid===ON.you.id);let my=mine+1;const n=st.length;
   let honor=my===1?30:my===2?12:my===3?4:0;if(my===n&&n>1)honor=-8;
   const myTeam=G.me.team;if(G.teamMode){const w=m.teamWins[0]===m.teamWins[1]?-1:(m.teamWins[0]>m.teamWins[1]?0:1);my=w===myTeam?1:2;honor=w===myTeam?25:w===-1?8:-5}
-  const before=rankOf(D.honor);D.honor=Math.max(0,D.honor+honor);const after=rankOf(D.honor);
-  D.stats.games++;if(my===1)D.stats.wins++;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();
+  const before=tierOf(D.stats);D.honor=Math.max(0,D.honor+honor);if(D.stats.beat===undefined)D.stats.beat=D.stats.wins;
+  const w0=m.teamWins[0]===m.teamWins[1];const beat=G.teamMode?(w0?0.5:(my===1?1:0)):(n>1?(n-my)/(n-1):0);
+  D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();const after=tierOf(D.stats);sendLoadout();
   $('#fnRank').textContent=G.teamMode?(m.teamWins[0]===m.teamWins[1]?'무승부':(my===1?'팀 승리!':'팀 패배')):my+'등';
-  $('#fnSub').innerHTML=`명예 ${honor>=0?'+':''}${honor} → ${D.honor}점<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after>before?`<br><span class="badge">계급 상승! ${RANKS[after][0]}</span>`:'');
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)} · 티어 점수 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
