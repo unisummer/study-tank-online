@@ -410,7 +410,7 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   const w0=m.teamWins[0]===m.teamWins[1];const beat=G.teamMode?(w0?0.5:(my===1?1:0)):(n>1?(n-my)/(n-1):0);
   D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();const after=tierOf(D.stats);sendLoadout();
   $('#fnRank').textContent=G.teamMode?(m.teamWins[0]===m.teamWins[1]?'무승부':(my===1?'팀 승리!':'팀 패배')):my+'등';
-  $('#fnSub').innerHTML=`티어 ${tierBadge(after)} · 티어 점수 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)}<br>누적 경험치 +${after.acc-before.acc} · 승률 경험치 ${after.winXP-before.winXP>=0?'+':''}${after.winXP-before.winXP} → 최종 경험치 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';

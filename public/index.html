@@ -336,16 +336,18 @@ const RANKS=[['훈련병',0],['이병',40],['일병',100],['상병',180],['병�
 /* 티어 (롤 티어표 참고): 누적 경기 수(경험) + 상대를 이긴 비율(승률)로 정해짐 */
 const TIERS=[['아이언','I','#8a8f98',0],['브론즈','B','#c0773f',100],['실버','S','#b9c6d3',300],['골드','G','#f2c94c',550],['플래티넘','P','#3fd1b5',850],['다이아몬드','D','#6fa8ff',1200],['마스터','M','#c77dff',1650]];
 const DIVS=['IV','III','II','I'];
-function tierPoints(st){st=st||{};const g=st.games|0;if(!g)return 0;
-  const avg=(st.beat!==undefined?st.beat:(st.wins|0))/g;           // 상대를 이긴 비율 0~1 (1등=1, 꼴찌=0, 팀 승리=1)
-  const exp=5*Math.min(g,240);                                         // 경험: 한 경기 5점, 최대 1200점
-  const skill=Math.max(0,Math.min(1,(avg-0.35)/0.4))*1000*Math.min(1,g/15); // 승률: 최대 1000점 (15경기부터 온전히 반영)
-  return Math.round(exp+skill)}
-function tierOf(st){const tp=tierPoints(st);let i=0;for(let k=0;k<TIERS.length;k++)if(tp>=TIERS[k][3])i=k;const T=TIERS[i],N=TIERS[i+1];
+// 최종 경험치 = 누적 경험치 + 승률 경험치 → 티어(계급)를 정함
+function tierXP(st){st=st||{};const g=st.games|0;if(!g)return {acc:0,win:0,total:0};
+  const avg=(st.beat!==undefined?st.beat:(st.wins|0))/g;                     // 상대를 이긴 비율 0~1 (1등=1, 꼴찌=0, 팀 승리=1)
+  const acc=5*Math.min(g,240);                                                // 누적 경험치: 한 경기 5, 최대 1,200
+  const win=Math.round(Math.max(0,Math.min(1,(avg-0.35)/0.4))*1000*Math.min(1,g/15)); // 승률 경험치: 최대 1,000 (15경기부터 온전히 반영)
+  return {acc,win,total:acc+win}}
+function tierPoints(st){return tierXP(st).total}
+function tierOf(st){const X=tierXP(st);const tp=X.total;let i=0;for(let k=0;k<TIERS.length;k++)if(tp>=TIERS[k][3])i=k;const T=TIERS[i],N=TIERS[i+1];
   let div=-1,next=null,lo=T[3],hi=N?N[3]:null;
   if(N){const step=(N[3]-T[3])/4;div=Math.min(3,Math.floor((tp-T[3])/step));lo=T[3]+step*div;hi=lo+step;next=div<3?`${T[0]} ${DIVS[div+1]}`:N[0]}
   const g=(st&&st.games)|0;const wr=g?Math.round(((st.beat!==undefined?st.beat:st.wins)||0)/g*100):0;
-  return {i,name:T[0]+(div>=0?' '+DIVS[div]:''),short:T[1]+(div>=0?4-div:''),color:T[2],tp,next,toNext:hi===null?0:Math.ceil(hi-tp),prog:hi===null?1:(tp-lo)/(hi-lo),games:g,wr}}
+  return {i,acc:X.acc,winXP:X.win,name:T[0]+(div>=0?' '+DIVS[div]:''),short:T[1]+(div>=0?4-div:''),color:T[2],tp,next,toNext:hi===null?0:Math.ceil(hi-tp),prog:hi===null?1:(tp-lo)/(hi-lo),games:g,wr}}
 function tierBadge(t){return `<span class="tier" style="--tc:${t.color}">${t.name}</span>`}
 function rankOf(h){let i=0;for(let k=0;k<RANKS.length;k++)if(h>=RANKS[k][1])i=k;return i}
 
@@ -980,7 +982,7 @@ function finalResult(){
   const beat=G.teamMode?(my===1?1:G.teamWins[0]===G.teamWins[1]?0.5:0):(n>1?(n-my)/(n-1):0);
   D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=G.players[0].kills;saveNow();const after=tierOf(D.stats);
   $('#fnRank').textContent=G.teamMode?(G.teamWins[0]>G.teamWins[1]?'팀 승리!':G.teamWins[0]===G.teamWins[1]?'무승부':'팀 패배'):my+'등';
-  $('#fnSub').innerHTML=`티어 ${tierBadge(after)} · 티어 점수 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)}<br>누적 경험치 +${after.acc-before.acc} · 승률 경험치 ${after.winXP-before.winXP>=0?'+':''}${after.winXP-before.winXP} → 최종 경험치 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   ps.forEach((p,i)=>html+=`<tr><td class="${p.isAI?'':'me'}">${i+1}. ${escapeHtml(p.name)}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;showScreen('#sFinal');
@@ -1248,7 +1250,7 @@ function renderLobby(){
   if(D.qDay!==today()){D.qDay=today();D.qToday=0}
   $('#lbQuizToday').textContent=`오늘 문제 골드 ${D.qToday}/${QCAP}G`;
   const tr=tierOf(D.stats);$('#lbRank').outerHTML=`<span class="tier" id="lbRank" style="--tc:${tr.color}">${tr.name}</span>`;
-  $('#lbHonor').textContent=`티어 점수 ${tr.tp} · 이긴 비율 ${tr.wr}%`+(tr.next?` · ${tr.next}까지 ${tr.toNext}점`:' · 최고 티어!');
+  $('#lbHonor').textContent=`누적 경험치 ${tr.acc} + 승률 경험치 ${tr.winXP} (이긴 비율 ${tr.wr}%) = 최종 경험치 ${tr.tp}`+(tr.next?` · ${tr.next}까지 ${tr.toNext}`:' · 최고 티어!');
   $('#lbHonorBar').style.width=(tr.prog*100)+'%';void ri;void next;
   $('#lbStats').textContent=`경기 ${D.stats.games} · 우승 ${D.stats.wins} · 처치 ${D.stats.kills} · 정답 ${D.stats.qRight}/${D.stats.qTotal}`;
   chipRow($('#dataChips'),Object.keys(DATASETS).map(k=>{const S=studentQs(k,false).length;return [k,`${DATASETS[k].name} · ${DATASETS[k].who}`+(S?` · 학생 문제 ${S}`:'')]}),D.set.data,v=>{D.set.data=v;saveNow();renderLobby()});
@@ -2087,7 +2089,7 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   const w0=m.teamWins[0]===m.teamWins[1];const beat=G.teamMode?(w0?0.5:(my===1?1:0)):(n>1?(n-my)/(n-1):0);
   D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();const after=tierOf(D.stats);sendLoadout();
   $('#fnRank').textContent=G.teamMode?(m.teamWins[0]===m.teamWins[1]?'무승부':(my===1?'팀 승리!':'팀 패배')):my+'등';
-  $('#fnSub').innerHTML=`티어 ${tierBadge(after)} · 티어 점수 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)}<br>누적 경험치 +${after.acc-before.acc} · 승률 경험치 ${after.winXP-before.winXP>=0?'+':''}${after.winXP-before.winXP} → 최종 경험치 ${before.tp} → ${after.tp}<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(after.name!==before.name&&after.tp>before.tp?`<br><span class="badge">티어 상승! ${after.name}</span>`:'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
