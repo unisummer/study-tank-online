@@ -236,6 +236,7 @@ table.res .n{text-align:right}
     <div class="card" style="display:flex;flex-direction:column;gap:14px">
       <div class="row" style="justify-content:space-between"><div><b>화면 어디서나 당기기</b><div class="sub">손가락이 탱크를 가릴 때 편해요</div></div><button class="chip" id="stAny"></button></div>
       <div class="row" style="justify-content:space-between"><div><b>소리</b></div><button class="chip" id="stSound"></button></div>
+      <div class="row" style="justify-content:space-between"><div><b>배경음악</b><div class="sub">전투 중에 나오는 신나는 음악</div></div><button class="chip" id="stMusic"></button></div>
       <div class="row" style="justify-content:space-between"><div><b>전체 화면</b><div class="sub">휴대폰에서 더 넓게</div></div><button class="chip" id="stFull">켜기</button></div>
       <div class="row" style="justify-content:space-between"><div><b>내 기록 처음부터</b><div class="sub">골드·계급·장비가 모두 처음으로</div></div><button class="chip" id="stReset" style="background:#a33a3a">초기화</button></div>
     </div>
@@ -277,6 +278,7 @@ table.res .n{text-align:right}
   <div style="display:flex;flex-direction:column;gap:10px">
     <button class="btn green" id="mnResume">계속하기</button>
     <button class="btn ghost" id="mnSound">소리</button>
+    <button class="btn ghost" id="mnMusic">배경음악</button>
     <button class="btn red" id="mnQuit">전투 그만두고 로비로</button>
   </div>
 </div></div>
@@ -322,7 +324,7 @@ const DEFAULT_DATA=()=>({gold:300,honor:0,up:{barrel:0,armor:0,engine:0},
   items:{repairS:1,repair:0,repairL:0,scope:1,double:0,shield:0,chute:1,tele:0,warp:1,spider:1},
   stats:{games:0,wins:0,beat:0,kills:0,qRight:0,qTotal:0,made:0},
   qDay:'',qToday:0,madeDay:'',madeToday:0,
-  set:{anywhere:false,sound:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4}});
+  set:{anywhere:false,sound:true,music:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4}});
 function merge(base,o){for(const k in o){const v=o[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&base[k]&&typeof base[k]==='object')merge(base[k],v);else base[k]=v}return base}
 let profiles=LS.get('gt_profiles',{});
 let me=null, D=null;
@@ -510,6 +512,44 @@ let toastT=0;function toast(m,ms=1800){const t=$('#toast');t.textContent=m;t.cla
 /* ---------- 소리 ---------- */
 let AC=null;
 function ensureAudio(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume()}
+/* ---------- 배경음악: 발랄한 전투 음악 (파일 없이 소리를 직접 만들어 연주, 8마디 × 2부분 반복) ---------- */
+const BGM=(()=>{
+  const BPM=152,E8=60/BPM/2;   // 8분음표 길이
+  const _=null;
+  // 멜로디 (한 마디 = 8분음표 8개, 숫자는 음 높이: 72=도5, 76=미5, 79=솔5, 84=도6)
+  const MEL=[
+    [72,_,76,79,84,_,79,76],[74,_,79,83,79,_,74,71],[76,_,72,69,72,76,81,_],[77,76,74,72,74,_,_,_],
+    [72,72,76,79,84,84,83,81],[79,_,74,79,83,_,86,_],[84,_,81,77,81,_,79,77],[79,_,_,74,79,_,83,_],
+    [81,_,77,81,84,_,81,_],[83,_,79,83,86,_,83,_],[79,_,76,79,83,_,79,76],[81,_,_,76,72,_,76,_],
+    [77,79,81,84,81,79,77,_],[79,81,83,86,83,81,79,_],[84,_,79,76,72,_,76,79],[84,_,_,_,72,_,_,_]];
+  // 마디별 화음 (근음, 3음, 5음)
+  const CH=[[48,52,55],[43,47,50],[45,48,52],[41,45,48],[48,52,55],[43,47,50],[41,45,48],[43,47,50],
+            [41,45,48],[43,47,50],[40,43,47],[45,48,52],[41,45,48],[43,47,50],[48,52,55],[48,52,55]];
+  const hz=m=>440*Math.pow(2,(m-69)/12);
+  let master=null,timer=null,next=0,step=0,noiseBuf=null,on=false;
+  function tone(type,m,t,dur,vol,glide){const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.setValueAtTime(hz(m),t);if(glide)o.frequency.exponentialRampToValueAtTime(hz(m)*glide,t+dur);
+    g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(vol,t+0.008);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+0.02)}
+  function noise(t,dur,vol,hp){if(!noiseBuf){noiseBuf=AC.createBuffer(1,AC.sampleRate*0.3,AC.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
+    const s=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();s.buffer=noiseBuf;f.type='highpass';f.frequency.value=hp;g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);s.connect(f);f.connect(g);g.connect(master);s.start(t);s.stop(t+dur+0.02)}
+  function kick(t){const o=AC.createOscillator(),g=AC.createGain();o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(45,t+0.12);g.gain.setValueAtTime(0.9,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.16);o.connect(g);g.connect(master);o.start(t);o.stop(t+0.18)}
+  function play(i,t){const bar=Math.floor(i/8)%16,b=i%8,m=MEL[bar][b],c=CH[bar];
+    if(m!==null)tone('square',m,t,E8*0.9,0.16);
+    tone('triangle',(b%2?c[0]+12:c[0]),t,E8*0.85,0.32);                 // 통통 튀는 베이스
+    if(b%2===1)for(const n of c)tone('square',n+24,t,E8*0.5,0.035);      // 엇박 화음
+    if(b===0||b===4||(b===7&&bar%2===1))kick(t);                       // 쿵
+    if(b===2||b===6)noise(t,0.12,0.35,1800);                            // 짝
+    noise(t,0.03,b%2?0.12:0.07,7000);                                   // 칙
+    if(bar%8===7&&b>=4)tone('square',m||84,t,E8*0.4,0.05,1.5)}          // 마디 끝 장식
+  function tick(){if(!AC)return;while(next<AC.currentTime+0.15){play(step,next);step++;next+=E8}}
+  return {
+    start(){if(on||!AC)return;on=true;master=AC.createGain();master.gain.setValueAtTime(0.0001,AC.currentTime);master.gain.linearRampToValueAtTime(0.13,AC.currentTime+1.2);master.connect(AC.destination);
+      next=AC.currentTime+0.08;step=0;timer=setInterval(tick,30);tick()},
+    stop(){if(!on)return;on=false;clearInterval(timer);const m=master;try{m.gain.cancelScheduledValues(AC.currentTime);m.gain.setValueAtTime(m.gain.value,AC.currentTime);m.gain.linearRampToValueAtTime(0.0001,AC.currentTime+0.6)}catch(e){}setTimeout(()=>{try{m.disconnect()}catch(e){}},800)},
+    get on(){return on},
+    prime(until){while(next<until){play(step,next);step++;next+=E8}}};   // 미리 듣기 파일 만들 때 사용
+})();
+function musicUpdate(){const want=!!(AC&&G&&G.tanks&&D&&D.set.sound&&D.set.music!==false&&!document.hidden&&AC.state==='running');if(want&&!BGM.on)BGM.start();else if(!want&&BGM.on)BGM.stop()}
+document.addEventListener('visibilitychange',()=>{try{musicUpdate()}catch(e){}});
 function sfx(type){if(!AC||!D||!D.set.sound)return;const t=AC.currentTime;const g=AC.createGain();g.connect(AC.destination);
   if(type==='boom'||type==='bigboom'){const len=type==='bigboom'?0.9:0.5;const buf=AC.createBuffer(1,AC.sampleRate*len,AC.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);const s=AC.createBufferSource();s.buffer=buf;const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=type==='bigboom'?500:900;s.connect(f);f.connect(g);g.gain.value=type==='bigboom'?0.5:0.3;s.start(t);return}
   const o=AC.createOscillator();o.connect(g);
@@ -1177,9 +1217,10 @@ $('#bQuizHud').onclick=()=>openQuiz({title:'기다리는 동안 문제 풀기',e
 let mapView=null;
 $('#bMap').onclick=()=>{if(!G||!G.tanks)return;if(mapView){cam.z=mapView.z;mapView=null;G.panHold=0;$('#bMap').textContent='🗺 전체 맵';return}
   mapView={z:cam.z};cam.z=0.01;cam.x=WW/2;cam.y=WH/2;G.panHold=9999;clampCam();$('#bMap').textContent='↩ 돌아가기'};
-$('#bMenu').onclick=()=>{$('#mnSound').textContent='소리 '+(D.set.sound?'끄기':'켜기');$('#mMenu').classList.remove('hidden')};
+$('#bMenu').onclick=()=>{$('#mnSound').textContent='소리 '+(D.set.sound?'끄기':'켜기');$('#mnMusic').textContent='배경음악 '+(D.set.music!==false?'끄기':'켜기');$('#mMenu').classList.remove('hidden')};
 $('#mnResume').onclick=()=>$('#mMenu').classList.add('hidden');
-$('#mnSound').onclick=()=>{D.set.sound=!D.set.sound;saveNow();$('#mnSound').textContent='소리 '+(D.set.sound?'끄기':'켜기')};
+$('#mnSound').onclick=()=>{D.set.sound=!D.set.sound;saveNow();$('#mnSound').textContent='소리 '+(D.set.sound?'끄기':'켜기');musicUpdate()};
+$('#mnMusic').onclick=()=>{ensureAudio();D.set.music=D.set.music===false;saveNow();$('#mnMusic').textContent='배경음악 '+(D.set.music!==false?'끄기':'켜기');musicUpdate()};
 $('#mnQuit').onclick=()=>{$('#mMenu').classList.add('hidden');if(G&&G.roundGoldTotal>0){D.gold+=0}G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');openLobby()};
 
 /* =========================================================
@@ -1302,7 +1343,7 @@ function render(){
 let last=performance.now();
 function loop(now){
   const dt=Math.min(0.033,(now-last)/1000);last=now;
-  aimTick(dt);
+  aimTick(dt);if(Math.floor(now/500)!==Math.floor((now-dt*1000)/500))musicUpdate();
   if(G&&G.online&&window.onlineStep){window.onlineStep(dt,now);render();requestAnimationFrame(loop);return}
   if(G&&G.tanks&&G.state!=='over'){
     for(const t of G.tanks)tankPhysics(t,dt);
@@ -1417,9 +1458,10 @@ $('#upQuiz').onclick=()=>openQuiz({title:'골드 채우기',earn:true});
 $('#upBack').onclick=()=>openLobby();
 
 // 설정
-function renderSettings(){const a=$('#stAny');a.textContent=D.set.anywhere?'켜짐':'꺼짐';a.classList.toggle('on',D.set.anywhere);const s=$('#stSound');s.textContent=D.set.sound?'켜짐':'꺼짐';s.classList.toggle('on',D.set.sound)}
+function renderSettings(){const a=$('#stAny');a.textContent=D.set.anywhere?'켜짐':'꺼짐';a.classList.toggle('on',D.set.anywhere);const s=$('#stSound');s.textContent=D.set.sound?'켜짐':'꺼짐';s.classList.toggle('on',D.set.sound);const mu=$('#stMusic');const mo=D.set.music!==false;mu.textContent=mo?'켜짐':'꺼짐';mu.classList.toggle('on',mo)}
 $('#stAny').onclick=()=>{D.set.anywhere=!D.set.anywhere;saveNow();renderSettings()};
-$('#stSound').onclick=()=>{D.set.sound=!D.set.sound;saveNow();renderSettings()};
+$('#stSound').onclick=()=>{D.set.sound=!D.set.sound;saveNow();renderSettings();musicUpdate()};
+$('#stMusic').onclick=()=>{ensureAudio();D.set.music=D.set.music===false;saveNow();renderSettings();musicUpdate()};
 $('#stFull').onclick=()=>{try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()}catch(e){}};
 $('#stReset').onclick=()=>{if(!$('#stReset').dataset.sure){$('#stReset').dataset.sure='1';$('#stReset').textContent='정말요? 한 번 더';return}const keep=D.set;D=DEFAULT_DATA();D.set=keep;saveNow();$('#stReset').dataset.sure='';$('#stReset').textContent='초기화';toast('처음부터 다시 시작해요')};
 $('#stBack').onclick=()=>openLobby();
