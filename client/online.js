@@ -164,7 +164,7 @@ function showOnLobby(){if(ON.room){showRoom();return}showScreen('#sOnLobby');$('
 function renderLobbyOn(){if(!D)return;
   const ri=rankOf(D.honor);
   $('#olWho').innerHTML=`<b>${esc(me)}</b> 님 · ${ON.className?`<span class="on-badge">${esc(ON.className)} 학급 모임방</span>`:'모두의 로비'}`;
-  $('#olGold').textContent=D.gold+'G';const T=ON.you&&ON.you.tier;$('#olRank').innerHTML=T?`${tierBadge(T)} `+(T.rank?`상위 ${T.top}% · 실력 ${T.r} · <u>순위표</u>`:`배치 ${T.games}/${T.need}경기 · <u>순위표</u>`):'';void ri;
+  $('#olGold').textContent=D.gold+'G';const T=ON.you&&ON.you.tier;$('#olRank').innerHTML=T?`${tierBadge(T)} `+(T.rank?`${T.of}명 중 ${T.rank}등 · ${T.r}점 · <u>순위표</u>`:`첫 판을 하면 티어가 생겨요 · <u>순위표</u>`):'';void ri;
   const box=$('#olRooms');box.innerHTML='';
   if(!ON.rooms.length)box.innerHTML='<div class="sub">아직 방이 없어요. ‘방 만들기’를 눌러 보세요!</div>';
   ON.rooms.forEach(r=>{const d=document.createElement('div');d.className='on-room';
@@ -412,10 +412,10 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   D.honor=Math.max(0,D.honor+honor);if(D.stats.beat===undefined)D.stats.beat=D.stats.wins;
   const w0=m.teamWins[0]===m.teamWins[1];const beat=G.teamMode?(w0?0.5:(my===1?1:0)):(n>1?(n-my)/(n-1):0);
   D.stats.games++;if(my===1)D.stats.wins++;D.stats.beat+=beat;D.stats.kills+=(st[mine]||{}).kills||0;saveNow();
-  const RT=(m.ratings||{})[ON.you.id];const before=RT?RT.before:ON.you.tier||{name:'배치 중',color:'#9aa3ad',r:1000},after=RT?RT.after:before;if(RT)ON.you.tier=after;
+  const RT=(m.ratings||{})[ON.you.id];const before=RT?RT.before:ON.you.tier||{name:'첫 판 전',color:'#9aa3ad',r:0},after=RT?RT.after:before;if(RT)ON.you.tier=after;
   $('#fnRank').textContent=G.teamMode?(m.teamWins[0]===m.teamWins[1]?'무승부':(my===1?'팀 승리!':'팀 패배')):my+'등';
   const chg=after.name!==before.name;const up=(after.tier||0)*4+(after.div||0)>(before.tier||0)*4+(before.div||0);
-  $('#fnSub').innerHTML=`티어 ${tierBadge(after)}`+(chg?` (${before.name} → ${after.name})`:'')+`<br>실력 점수 ${before.r} → ${after.r} (${RT&&RT.d>=0?'+':''}${RT?RT.d:0})`+(after.rank?` · 전체 ${after.of}명 중 ${after.rank}등 (상위 ${after.top}%)`:after.need?` · 배치 경기 ${after.games}/${after.need}`:'')+`<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(chg?(before.name==='배치 중'?`<br><span class="badge">배치 완료! ${after.name}</span>`:`<br><span class="badge">${up?'티어 상승!':'티어 하락…'} ${after.name}</span>`):'');
+  $('#fnSub').innerHTML=`티어 ${tierBadge(after)}`+(chg?` (${before.name} → ${after.name})`:'')+`<br>최종 점수 ${before.r} → <b>${after.r}</b> (${RT&&RT.d>=0?'+':''}${RT?RT.d:0}) = 승률 점수 ${after.winPt} (승률 ${after.wr}% × 배점 ${after.weight}) + 플레이 점수 ${after.playPt}`+(after.rank?`<br>전체 ${after.of}명 중 ${after.rank}등 (상위 ${after.top}%)`:'')+`<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(chg?(before.name==='첫 판 전'?`<br><span class="badge">첫 티어! ${after.name}</span>`:`<br><span class="badge">${up?'티어 상승!':'티어 하락…'} ${after.name}</span>`):'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
@@ -450,9 +450,9 @@ window.__onBattle=function(m){switch(m.t){
   case 'b_sync':onSync(m);break;
 }};
 function showBoard(m){let html=`<div class="on-board"><div class="row" style="justify-content:space-between"><b>🏆 실시간 순위표</b><button class="chip" id="obClose">닫기</button></div>
-  <div class="sub">티어는 전체 플레이어 중 내 실력 점수 위치로 정해져요. 아이언 하위 10% · 브론즈 다음 20% · 실버 25% · 골드 20% · 플래티넘 13% · 다이아몬드 8% · 마스터 상위 4%. 배치 3경기를 해야 티어가 생겨요.</div><table class="tbl">`;
-  m.board.forEach(p=>html+=`<tr><td>${p.rank}등</td><td>${tierBadge(p)}</td><td class="${p.name===me?'me':''}">${esc(p.name)}</td><td class="n">${p.r}</td><td class="n">${p.games}경기 ${p.wins}승</td></tr>`);
-  if(!m.board.length)html+='<tr><td>아직 배치를 마친 사람이 없어요.</td></tr>';
+  <div class="sub">최종 점수 = 승률 점수(승률 × 배점) + 플레이 점수(판 수 × 5). 배점은 1~9판 1,000 · 10~99판 2,000 · 100판 이상 4,000.<br>이 점수 순위로 티어가 정해져요: 상위 4% 마스터 · 8% 다이아몬드 · 13% 플래티넘 · 20% 골드 · 25% 실버 · 20% 브론즈 · 하위 10% 아이언.</div><table class="tbl"><tr><th>순위</th><th>티어</th><th>이름</th><th class="n">점수</th><th class="n">승률</th><th class="n">판</th></tr>`;
+  m.board.forEach(p=>html+=`<tr><td>${p.rank}등</td><td>${tierBadge(p)}</td><td class="${p.player===me?'me':''}">${esc(p.player)}</td><td class="n">${p.r}</td><td class="n">${p.wr}%</td><td class="n">${p.games}</td></tr>`);
+  if(!m.board.length)html+='<tr><td colspan="6">아직 대전을 한 사람이 없어요.</td></tr>';
   html+='</table></div>';let d=$('#onBoardWrap');if(!d){d=document.createElement('div');d.id='onBoardWrap';document.body.appendChild(d)}d.innerHTML=html;d.classList.remove('hidden');$('#obClose').onclick=()=>d.classList.add('hidden')}
 $('#olRank').style.cursor='pointer';$('#olRank').onclick=()=>send({t:'rank'});
 window.__gtOnline={BT,ON};

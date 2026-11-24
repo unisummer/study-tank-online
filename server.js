@@ -79,6 +79,8 @@ async function api(req, res, url) {
   // ---- 선생님(관리자) ----
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 403, { err: 'admin' });
+    if (p === '/api/admin/ranking' && req.method === 'GET') return send(res, 200, { board: RT.board(100) });
+    if (p === '/api/admin/ranking/reset' && req.method === 'POST') { RT.reset(); for (const [c2, i2] of conns) S(c2, { t: 'my_tier', tier: RT.tierOf(i2.uid) }); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/classes' && req.method === 'GET') return send(res, 200, { classes: CLASSES, online: onlineList() });
     if (p === '/api/admin/class' && req.method === 'POST') {
       const b = await body(req, 2048); const name = String(b.name || '').slice(0, 20).trim() || '우리 반';
