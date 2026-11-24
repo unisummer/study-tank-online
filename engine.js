@@ -16,7 +16,7 @@ const WSTAT = {
   deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
 };
 const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
-const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched'];
+const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave'];
 const CRATE_POOL = [['nuke', 1], ['death', 2], ['air', 3], ['triple', 3], ['napalm', 3], ['leap', 3], ['dirtL', 2], ['gold', 3], ['repair', 2]];
 const HEAL = { repairS: 15, repair: 20, repairL: 25 };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -24,6 +24,53 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 // 씨앗 번호로 같은 난수가 나오게 (mulberry32)
 function rng(seed) { let a = seed >>> 0; return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
+/*EXTRA_MAPS_BEGIN — maps_extra.js에서 복사됨 (build.py가 맞춰 줌)*/
+// 포트리스2 맵을 참고한 새 맵들 (혼자 하기와 온라인 엔진이 똑같은 코드를 씀)
+// 재료: 1 흙, 2 돌, 3 나무 발판. col(x,y0,y1,m) 세로줄 채우기, rect, ellipse, plank, rand(a,b), R()
+function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank, valleys) {
+  const cl = (v, a, b) => v < a ? a : v > b ? b : v;
+  if (kind === 'sphinx') {
+    // 스핑크스 계단: 양쪽 끝이 계단처럼 높이 솟고 가운데는 넓게 파인 이집트풍 맵 (끝의 높은 곳이 유리)
+    const steps = 4 + Math.floor(R() * 2), sw = WW * rand(0.055, 0.07), top = WH * rand(0.26, 0.34), pit = WH * rand(0.78, 0.84), dh = (pit - top) / steps;
+    for (let x = 0; x < WW; x++) {
+      const e = Math.min(x, WW - 1 - x); const k = Math.floor(e / sw); let y = k >= steps ? pit : top + dh * k;
+      y += Math.sin(x / 41) * 4; col(x, y, WH - 1, 1); col(x, y, y + 12, 2);   // 계단 윗면은 돌
+    }
+    // 가운데 작은 피라미드
+    const px = WW / 2 + rand(-WW * 0.06, WW * 0.06), pw = rand(170, 260), ph = rand(110, 170);
+    for (let x = Math.ceil(px - pw); x <= px + pw; x++) col(x, pit - ph * (1 - Math.abs(x - px) / pw), pit, 2);
+  } else if (kind === 'logbridge') {
+    // 외나무다리: 양쪽 끝 두꺼운 절벽 사이를 얇은 외나무다리 하나가 잇는 맵 (떨어지면 끝)
+    const cw = WW * rand(0.12, 0.15), cy = WH * rand(0.46, 0.54);
+    for (let x = 0; x < WW; x++) { const e = Math.min(x, WW - 1 - x); if (e < cw) col(x, cy - 30 + Math.sin(x / 70) * 10 - (cw - e) * 0.25, WH - 1, 1); }
+    const ph = rand(0, 6);
+    for (let x = Math.floor(cw - 30); x < WW - cw + 30; x++) { const y = cy + Math.sin(x / 260 + ph) * 26; col(x, y, y + 15, 3); }
+    // 다리 아래 작은 섬 두어 개 (떨어지다 걸릴 수 있음)
+    const k = 1 + Math.floor(R() * 2); for (let i = 0; i < k; i++) ellipse(cw + (WW - 2 * cw) * rand(0.2, 0.8), WH * rand(0.74, 0.84), rand(70, 120), rand(16, 26), 1);
+  } else if (kind === 'island') {
+    // 구름 섬: 가운데 큰 섬과 초가집, 양옆은 몽실몽실 구름 발판
+    const ix = WW / 2, iw = WW * rand(0.16, 0.2), itop = WH * rand(0.48, 0.55);
+    for (let x = Math.ceil(ix - iw); x <= ix + iw; x++) { const t = (x - ix) / iw; const y = itop + 40 * t * t + Math.sin(x / 33) * 5; col(x, y, itop + 140 + 230 * (1 - t * t), 1); }
+    // 초가집 (나무 벽 + 흙 지붕)
+    const hx = ix + rand(-iw * 0.3, iw * 0.3), hy = itop + 40 * Math.pow((hx - ix) / iw, 2);
+    rect(hx - 50, hy - 70, 100, 70, 3); for (let x = Math.ceil(hx - 70); x <= hx + 70; x++) col(x, hy - 70 - 45 * (1 - Math.abs(x - hx) / 70), hy - 64, 1);
+    // 구름: 양쪽에 층층이
+    const side = (x0, x1) => { const rows = [0.3, 0.46, 0.62, 0.76]; for (const r of rows) { let x = x0 + rand(0, 120); while (x < x1 - 100) { const w = rand(150, 260), y = WH * r + rand(-30, 30); for (let j = 0; j < 4; j++) ellipse(x + w * (j + 0.5) / 4, y + rand(-6, 6), w / 4 + rand(10, 24), rand(16, 26), 1); x += w + rand(110, 200); } } };
+    side(40, ix - iw - 80); side(ix + iw + 80, WW - 40);
+  } else if (kind === 'grave') {
+    // 비석 언덕: 얇은 땅 위에 비석이 서 있고, 가장자리로 갈수록 땅이 두꺼워짐. 가운데 아래에 얇은 층이 하나 더
+    const base = WH * rand(0.5, 0.58), ph = rand(0, 6);
+    const surf = x => base + Math.sin(x / 210 + ph) * 45 + Math.sin(x / 63) * 10;
+    for (let x = 0; x < WW; x++) { const e = Math.min(x, WW - 1 - x) / (WW / 2); const th = 24 + Math.pow(1 - e, 3) * 420; col(x, surf(x), surf(x) + th, 1); }
+    const lw = WW * rand(0.18, 0.24), ly = WH * rand(0.78, 0.84);
+    for (let x = Math.floor(WW / 2 - lw); x < WW / 2 + lw; x++) { const y = ly + Math.sin(x / 90) * 12; col(x, y, y + 18, 1); }
+    const k = Math.round(WW / 260);
+    for (let i = 0; i < k; i++) { const x = (i + 0.5) / k * WW + rand(-60, 60), y = surf(x), w = rand(22, 30), h = rand(40, 62);
+      for (let xx = Math.ceil(x - w / 2); xx <= x + w / 2; xx++) { const d = Math.abs(xx - x) / (w / 2); col(xx, y - h - Math.sqrt(Math.max(0, 1 - d * d)) * w * 0.45, y + 4, 2); } }
+  }
+  void cl; void valleys;
+}
+/*EXTRA_MAPS_END*/
 /* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
 function genWorld(seed, kind, nTanks) {
   const R = rng(seed); const rand = (a, b) => a + R() * (b - a);
@@ -67,6 +114,26 @@ function genWorld(seed, kind, nTanks) {
     let j = 0;
     for (let x = 0; x < WW; x++) { while (j < pts.length - 2 && pts[j + 1][0] < x) j++; const [x0, y0] = pts[j], [x1, y1] = pts[j + 1]; const t = clamp((x - x0) / Math.max(1, x1 - x0), 0, 1); const e = (1 - Math.cos(t * Math.PI)) / 2; col(x, y0 + (y1 - y0) * e + Math.sin(x / 37 + ph[0]) * 9 + Math.sin(x / 13 + ph[1]) * 4, WH - 1, 1); }
     for (let i = 0; i < k; i++) if (R() < 0.6) { const x = (i + 1) * seg + rand(-60, 60); rect(x - rand(80, 140), WH * rand(0.35, 0.55), rand(90, 160), 22, 2); }
+  } else if (['sphinx', 'logbridge', 'island', 'grave'].includes(kind)) {
+    paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank, valleys);
+  } else if (kind === 'donuts') {
+    // 도넛 섬: 하늘에 도넛 모양 땅이 잔뜩, 탱크는 저마다 도넛 안에서 시작 (껍질을 부숴야 밖으로 쏠 수 있음)
+    const rings = []; const ok = (cx, cy, ro) => rings.every(o => Math.hypot(o.cx - cx, o.cy - cy) > o.ro + ro + 36);
+    const seg = WW / nTanks;
+    for (let i = 0; i < nTanks; i++) { for (let tries = 0; tries < 40; tries++) { const ro = rand(118, 158), cx = clamp((i + 0.5) * seg + rand(-seg * 0.2, seg * 0.2), ro + 30, WW - ro - 30), cy = WH * rand(0.2, 0.66); if (ok(cx, cy, ro) || tries === 39) { rings.push({ cx, cy, ro, t: rand(30, 40), spawn: true }); break; } } }
+    const extra = Math.round(WW / 520);
+    for (let i = 0; i < extra * 6 && rings.filter(r => !r.spawn).length < extra; i++) { const ro = rand(70, 140), cx = rand(ro + 20, WW - ro - 20), cy = WH * rand(0.12, 0.74); if (ok(cx, cy, ro)) rings.push({ cx, cy, ro, t: rand(24, 36), spawn: false }); }
+    for (const r of rings) {
+      const ri = r.ti = r.ro - r.t, floorY = r.cy + ri - 14;
+      for (let x = Math.ceil(r.cx - r.ro); x <= r.cx + r.ro; x++) {
+        const dx = x - r.cx, ho = Math.sqrt(Math.max(0, r.ro * r.ro - dx * dx)), hi = Math.abs(dx) < ri ? Math.sqrt(ri * ri - dx * dx) : -1;
+        if (hi < 0) col(x, r.cy - ho, r.cy + ho, 1);
+        else { col(x, r.cy - ho, r.cy - hi, 1); col(x, Math.min(r.cy + hi, floorY), r.cy + ho, 1); }
+      }
+      if (r.spawn) valleys.push({ x: Math.round(r.cx), y: Math.round(floorY) - 1 });
+    }
+    // 맨 아래 낮은 땅 (떨어져도 바로 탈락하지 않게)
+    const ph = rand(0, 6); for (let x = 0; x < WW; x++) col(x, WH * 0.9 + Math.sin(x / 160 + ph) * 22, WH - 1, 1);
   } else { // towers
     const gy = WH * 0.84; let x = 0;
     while (x < WW) { const w = rand(380, 700); for (let xx = Math.round(x); xx <= Math.min(WW - 1, x + w); xx++) col(xx, gy + Math.sin(xx / 80) * 14, WH - 1, 1); x += w + rand(140, 230); }
@@ -78,7 +145,7 @@ function genWorld(seed, kind, nTanks) {
       if (i < k - 1 && R() < 0.6) { const nx = (i + 1.5) / k * WW; plank(tx + tw / 2, ty + rand(0, 60), Math.max(60, nx - tx - tw), 18); }
     }
   }
-  const bedrockY = (kind === 'hills' || kind === 'scorched') ? WH - 40 : 99999;
+  const bedrockY = (kind === 'hills' || kind === 'scorched' || kind === 'donuts' || kind === 'sphinx') ? WH - 40 : 99999;
   if (bedrockY < WH) rect(0, bedrockY, WW, WH - bedrockY, 2);
   const solid = new Uint8Array(WW * WH); for (let i = 0; i < mat.length; i++) solid[i] = mat[i] ? 1 : 0;
   return { WW, WH, mat, solid, kind, valleys, bedrockY, themeIdx, seed, nukeR: Math.round(WW / 6), R };
@@ -98,6 +165,7 @@ function standSpots(w) { const out = [], s = (x, y) => isSolidW(w, x, y); for (l
 function shuffleR(a, R) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function surfaceYW(w, x) { for (let y = 0; y < w.WH; y++) if (isSolidW(w, x, y)) return y; return w.WH + 50; }
 function pickSpawns(w, n, R) {
+  if (w.kind === 'donuts' && w.valleys.length >= n) return shuffleR(w.valleys.slice(0, n).map(v => ({ x: v.x, y: v.y })), R);
   if (w.kind === 'scorched' && w.valleys.length >= n) return shuffleR(w.valleys.slice(0, n).map(vx => { const x = Math.round(vx); return { x, y: surfaceYW(w, x) - 1 }; }), R);
   const spots = shuffleR(standSpots(w), R); let minD = w.WW / (n + 0.5) * 0.85; const res = [];
   while (res.length < n && minD > 20) { res.length = 0; for (const s0 of spots) { if (res.every(r => Math.hypot(r.x - s0.x, (r.y - s0.y) * 0.8) > minD)) res.push(s0); if (res.length >= n) break; } minD *= 0.85; }

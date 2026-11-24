@@ -9,7 +9,7 @@ const $=s=>document.querySelector(s);
 const ON={token:null,name:null,ws:null,channel:'public',className:'',rooms:[],online:[],room:null,you:null,saveT:0,retry:0,classCode:''};
 window.ONLINE=ON;
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡'};
+const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡',donuts:'도넛 섬',sphinx:'스핑크스 계단',logbridge:'외나무다리',island:'구름 섬',grave:'비석 언덕'};
 const DATANAME={phon:'음운의 변동',add1:'덧셈 (한 자리)',add2:'덧셈 (두 자리)',sub1:'뺄셈',gugu:'구구단',free:'자유 문제'};
 const QUICK=['안녕!','잘했어!','한 판 더!','문제 풀고 올게','준비됐어?','좋은 게임!'];
 
@@ -358,7 +358,7 @@ window.onlineStep=function(dt){
   for(const q of G.parts){q.life-=dt;q.vy+=q.grav*dt;q.x+=q.vx*dt;q.y+=q.vy*dt}G.parts=G.parts.filter(q=>q.life>0);if(G.parts.length>900)G.parts.splice(0,G.parts.length-900);
   for(const tx of G.texts){tx.life-=dt;tx.y-=26*dt}G.texts=G.texts.filter(t=>t.life>0);
   G.shake=Math.max(0,(G.shake||0)-dt*40);
-  if(G.panHold>0)G.panHold-=dt;else{const c=G.cur||G.me;let tx=c?c.x:cam.x,ty=c?c.y-120:cam.y;if(G.proj.length){tx=G.proj[0].x;ty=G.proj[0].y}
+  if(G.panHold>0)G.panHold-=dt;else{const c=G.cur||G.me;let tx=c?c.x:cam.x,ty=c?(myAimTurn()?c.y+ch*0.12/sc():c.y-120):cam.y;if(G.proj.length){tx=G.proj[0].x;ty=G.proj[0].y}
     const k=1-Math.pow(0.02,dt);cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k}
   clampCam();
   const now=performance.now();if(Math.floor(now/250)!==Math.floor((now-dt*1000)/250))updateHud();
