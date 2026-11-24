@@ -418,7 +418,12 @@ const BAL={
   royaltyDailyCap:300,          // 하루 인세 상한
   poolSize:100,                 // 교사 문제 + 학생 문제를 합쳐 맞출 목표 개수 (학생 문제가 늘면 교사 문제를 줄임)
   hideAt:5,                     // 오류예요 + 별로예요 가 이 숫자가 되면 숨김
-  reviveHp:50                   // 문제를 만들어 부활할 때 체력
+  reviveHp:50,                  // 문제를 만들어 부활할 때 체력
+  // 라운드 보상 — 사람이 많은 판일수록 크게 (1:1만 하는 것보다 큰 판이 이득이 되도록)
+  rankPerBeat:60,               // 개인전: 내 아래 등수 탱크 1대마다 (8명 1등 420G, 4명 1등 180G, 1:1 1등 60G)
+  teamWinPerEnemy:100,          // 팀전 승리: 상대 팀 탱크 1대마다 (2:2 200G, 3:3 300G, 4:4 400G)
+  teamLosePerEnemy:30,          // 팀전 패배 위로: 상대 팀 탱크 1대마다 (2:2 60G, 4:4 120G)
+  aliveBonus:50                 // 팀전: 라운드 끝까지 살아남으면
 };
 const REWARD=BAL.quizReward;
 const QCAP=BAL.quizDailyCap;
@@ -926,11 +931,12 @@ function endRound(why){
     // 살아남은 팀(없으면 남은 체력 합이 큰 팀)이 승리
     const hpOf=tm=>G.tanks.filter(t=>t.team===tm&&t.alive).reduce((a,t)=>a+t.hp,0);const win=hpOf(0)===hpOf(1)?(G.me.alive?0:1):(hpOf(0)>hpOf(1)?0:1);
     G.winTeam=win;G.teamWins[win]++;G.tanks.forEach(t=>{t.rank=t.team===win?1:2;if(t.team===win)t.p.points+=2});myRank=G.me.rank;
-    if(myRank===1)addGold('팀 승리',200);else addGold('팀 패배 위로',50);
-    if(G.me.alive)addGold('끝까지 생존',50);
+    const enemies=G.tanks.filter(t=>t.team!==G.me.team).length;
+    if(myRank===1)addGold(`팀 승리 (상대 ${enemies}대)`,BAL.teamWinPerEnemy*enemies);else addGold(`팀 패배 위로 (상대 ${enemies}대)`,BAL.teamLosePerEnemy*enemies);
+    if(G.me.alive)addGold('끝까지 생존',BAL.aliveBonus);
   }else{
     order.forEach((t,i)=>{t.rank=i+1;t.p.points+=n-1-i});myRank=G.me.rank;
-    const rr={1:200,2:100,3:50}[myRank];if(rr&&n>1)addGold(myRank+'등 보상',rr);
+    const rr=BAL.rankPerBeat*(n-myRank);if(rr>0)addGold(`${n}명 중 ${myRank}등 보상`,rr);
     const maxOther=Math.max(0,...G.tanks.filter(t=>t!==G.me).map(t=>t.roundKills));
     if(myRank===1&&G.me.roundKills>0&&G.me.roundKills>=maxOther){addGold('완벽 보상(처치+생존)',G.roundGoldTotal)}}
   D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();

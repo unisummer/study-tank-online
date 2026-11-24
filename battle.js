@@ -6,6 +6,8 @@ const TEAMCOL = [['#3fa7ff', '#5cc8ff', '#2f7fe0', '#8fd3ff'], ['#ff5a5f', '#ff8
 const COLORS = ['#3fa7ff', '#ff5a5f', '#ffb400', '#b06bff', '#2ecc71', '#ff8fd0', '#ff7f27', '#bfbfbf'];
 const AI_AMMO = () => ({ scatter: 1, big: 1, dig: 1, mirv: 1, roller: 1, [E.SUPER[Math.floor(Math.random() * E.SUPER.length)]]: 1 });
 const AWAY_TO_AI = 60000;
+// 라운드 보상 — 사람이 많은 판일수록 크게. 컴퓨터 탱크는 반만 셈 (컴퓨터로 채워 보상 부풀리기 방지)
+const RW = { rankPerBeat: 60, teamWinPerEnemy: 100, teamLosePerEnemy: 30, aliveBonus: 50, aiWeight: 0.5 };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 class Battle {
@@ -58,6 +60,8 @@ class Battle {
     this.later(() => this.nextTurn(true), 2500);
   }
   addGold(goldByI) { for (const i in goldByI) { const g = this.roundGold[i] || (this.roundGold[i] = {}); for (const l in goldByI[i]) g[l] = (g[l] || 0) + goldByI[i][l]; } }
+  weight(list) { return list.reduce((a, o) => a + (this.players[o.i].ai && !this.players[o.i].uid ? RW.aiWeight : 1), 0); }
+  fmt(x) { return Number.isInteger(x) ? String(x) : x.toFixed(1); }
   aliveTeams() { return [...new Set(this.tanks.filter(t => t.alive).map(t => t.team))]; }
 
   nextTurn(first) {
@@ -150,11 +154,11 @@ class Battle {
       const hpOf = tm => this.tanks.filter(t => t.team === tm && t.alive).reduce((a, t) => a + t.hp, 0);
       winTeam = hpOf(0) === hpOf(1) ? (Math.random() < 0.5 ? 0 : 1) : (hpOf(0) > hpOf(1) ? 0 : 1);
       this.teamWins[winTeam]++;
-      for (const t of this.tanks) { t.rank = t.team === winTeam ? 1 : 2; if (t.team === winTeam) this.players[t.i].points += 2; if (!t.isAI) { bonus[t.i] = t.team === winTeam ? { '팀 승리': 200 } : { '팀 패배 위로': 50 }; if (t.alive) bonus[t.i]['끝까지 생존'] = 50; } }
+      for (const t of this.tanks) { t.rank = t.team === winTeam ? 1 : 2; if (t.team === winTeam) this.players[t.i].points += 2; if (!t.isAI) { const en = this.weight(this.tanks.filter(o => o.team !== t.team)); bonus[t.i] = t.team === winTeam ? { [`팀 승리 (상대 ${this.fmt(en)}대)`]: Math.round(RW.teamWinPerEnemy * en) } : { [`팀 패배 위로 (상대 ${this.fmt(en)}대)`]: Math.round(RW.teamLosePerEnemy * en) }; if (t.alive) bonus[t.i]['끝까지 생존'] = RW.aliveBonus; } }
     } else {
       order.forEach((t, k) => { t.rank = k + 1; this.players[t.i].points += n - 1 - k; });
       const maxK = i => Math.max(0, ...this.tanks.filter(t => t.i !== i).map(t => t.roundKills || 0));
-      for (const t of this.tanks) { if (t.isAI) continue; const b = {}; const rr = { 1: 200, 2: 100, 3: 50 }[t.rank]; if (rr) b[t.rank + '등 보상'] = rr;
+      for (const t of this.tanks) { if (t.isAI) continue; const b = {}; const below = this.weight(order.slice(t.rank)); const rr = Math.round(RW.rankPerBeat * below); if (rr > 0) b[`${n}명 중 ${t.rank}등 보상`] = rr;
         if (t.rank === 1 && (t.roundKills || 0) > 0 && t.roundKills >= maxK(t.i)) { const sum = Object.values(this.roundGold[t.i] || {}).reduce((a, b) => a + b, 0); if (sum) b['완벽 보상(처치+생존)'] = sum + (rr || 0); }
         bonus[t.i] = b; }
     }
