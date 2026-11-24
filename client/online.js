@@ -358,8 +358,8 @@ window.onlineStep=function(dt){
   for(const q of G.parts){q.life-=dt;q.vy+=q.grav*dt;q.x+=q.vx*dt;q.y+=q.vy*dt}G.parts=G.parts.filter(q=>q.life>0);if(G.parts.length>900)G.parts.splice(0,G.parts.length-900);
   for(const tx of G.texts){tx.life-=dt;tx.y-=26*dt}G.texts=G.texts.filter(t=>t.life>0);
   G.shake=Math.max(0,(G.shake||0)-dt*40);
-  if(G.panHold>0)G.panHold-=dt;else{const c=G.cur||G.me;let tx=c?c.x:cam.x,ty=c?(myAimTurn()?c.y+ch*0.12/sc():c.y-120):cam.y;if(G.proj.length){tx=G.proj[0].x;ty=G.proj[0].y}
-    const k=1-Math.pow(0.02,dt);cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k}
+  if(G.panHold>0)G.panHold-=dt;else{const c=G.cur||G.me;let tx=c?c.x:cam.x,ty=c?c.y-120:cam.y;if(G.proj.length){tx=G.proj[0].x;ty=G.proj[0].y}
+    camFollow(dt,tx,ty)}
   clampCam();
   const now=performance.now();if(Math.floor(now/250)!==Math.floor((now-dt*1000)/250))updateHud();
 };
