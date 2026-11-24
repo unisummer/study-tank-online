@@ -16,7 +16,7 @@ const WSTAT = {
   deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
 };
 const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
-const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave'];
+const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
 const CRATE_POOL = [['nuke', 1], ['death', 2], ['air', 3], ['triple', 3], ['napalm', 3], ['leap', 3], ['dirtL', 2], ['gold', 3], ['repair', 2]];
 const HEAL = { repairS: 15, repair: 20, repairL: 25 };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -67,6 +67,40 @@ function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank,
     const k = Math.round(WW / 260);
     for (let i = 0; i < k; i++) { const x = (i + 0.5) / k * WW + rand(-60, 60), y = surf(x), w = rand(22, 30), h = rand(40, 62);
       for (let xx = Math.ceil(x - w / 2); xx <= x + w / 2; xx++) { const d = Math.abs(xx - x) / (w / 2); col(xx, y - h - Math.sqrt(Math.max(0, 1 - d * d)) * w * 0.45, y + 4, 2); } }
+  } else if (kind === 'wisland') {
+    // 웜즈 섬: 바다 위에 울퉁불퉁한 큰 섬 2~3개, 섬 속에 동굴 구멍이 숭숭, 떠 있는 바위 조각
+    const n = 2 + Math.floor(R() * 2), gap = rand(140, 220), w = (WW - gap * (n + 1)) / n;
+    const ph = [rand(0, 6), rand(0, 6), rand(0, 6), rand(0, 6)];
+    const noise = (x, k) => Math.sin(x / 97 + ph[k]) * 40 + Math.sin(x / 41 + ph[k + 1]) * 16 + Math.sin(x / 17 + ph[k]) * 5;
+    for (let i = 0; i < n; i++) { const x0 = gap + i * (w + gap), x1 = x0 + w, top = WH * rand(0.36, 0.5), bot = WH * rand(0.8, 0.9);
+      for (let x = Math.floor(x0 - 40); x < x1 + 40; x++) { const t = (x - x0) / w; const edge = Math.min(1, Math.min(t, 1 - t) * 6 + 0.15); if (edge <= 0.05) continue;
+        const y0 = top + noise(x, 0) + (1 - edge) * 260, y1 = bot + noise(x, 2) * 0.6 - (1 - edge) * 120; if (y1 > y0) col(x, y0, y1, 1); }
+      // 동굴 구멍
+      const holes = 3 + Math.floor(R() * 4); for (let h = 0; h < holes; h++) ellipse(rand(x0 + 60, x1 - 60), rand(top + 110, bot - 70), rand(40, 90), rand(28, 55), 0);
+    }
+    // 떠 있는 바위
+    const k = Math.round(WW / 700); for (let i = 0; i < k; i++) ellipse(rand(80, WW - 80), WH * rand(0.14, 0.32), rand(50, 110), rand(14, 26), 1);
+  } else if (kind === 'wcave') {
+    // 웜즈 동굴: 위에도 천장이 막힌 큰 동굴. 종유석·석순 기둥, 가운데 떠 있는 바위 (높이 쏘면 천장에 맞음)
+    const ph = [rand(0, 6), rand(0, 6), rand(0, 6)];
+    const ceil = x => WH * 0.13 + Math.sin(x / 120 + ph[0]) * 40 + Math.sin(x / 37 + ph[1]) * 12;
+    const floor = x => WH * 0.8 + Math.sin(x / 140 + ph[2]) * 50 + Math.sin(x / 29 + ph[0]) * 10;
+    for (let x = 0; x < WW; x++) { col(x, 0, ceil(x), 2); col(x, ceil(x) - 30, ceil(x), 1); col(x, floor(x), WH - 1, 1); }
+    // 종유석(위에서 아래로)과 석순(아래에서 위로)
+    const k = Math.round(WW / 260);
+    for (let i = 0; i < k; i++) { const x = rand(60, WW - 60), w = rand(26, 60), up = R() < 0.5, len = rand(90, 260);
+      for (let xx = Math.ceil(x - w); xx <= x + w; xx++) { const d = 1 - Math.abs(xx - x) / w; if (up) col(xx, floor(xx) - len * d, floor(xx), 1); else col(xx, ceil(xx), ceil(xx) + len * d, 1); } }
+    // 천장과 바닥을 잇는 큰 기둥 몇 개
+    const pc = 1 + Math.floor(WW / 1600); for (let i = 0; i < pc; i++) { const x = (i + 0.5) / pc * WW + rand(-120, 120), w = rand(40, 70); for (let xx = Math.ceil(x - w); xx <= x + w; xx++) col(xx, ceil(xx), floor(xx), 1); ellipse(x, (ceil(x) + floor(x)) / 2, w * 0.7, rand(50, 90), 0); }
+    const fk = Math.round(WW / 600); for (let i = 0; i < fk; i++) ellipse(rand(100, WW - 100), WH * rand(0.4, 0.58), rand(60, 130), rand(16, 28), 1);
+    // 시작 자리: 바닥 위 (천장 위가 아니라 동굴 안)
+    for (let i = 0; i < 24; i++) { const x = Math.round((i + 0.5) / 24 * WW); valleys.push({ x, y: -1 }); }
+  } else if (kind === 'cheese') {
+    // 치즈 섬: 구멍 숭숭 뚫린 커다란 치즈 덩어리들, 아래는 물
+    const blocks = 2 + Math.floor(WW / 1500);
+    for (let b = 0; b < blocks; b++) { const w = WW / blocks * rand(0.62, 0.8), x0 = (b + 0.5) * WW / blocks - w / 2, top = WH * rand(0.34, 0.52), bot = WH * rand(0.78, 0.88), slope = rand(-0.12, 0.12);
+      for (let x = Math.floor(x0); x < x0 + w; x++) { const y0 = top + (x - x0) * slope; col(x, y0, bot, 1); }
+      const holes = Math.round(w * (bot - top) / 9000); for (let h = 0; h < holes; h++) { const r = rand(16, 54); ellipse(rand(x0 + r, x0 + w - r), rand(top + r + 10, bot - r), r, r, 0); } }
   }
   void cl; void valleys;
 }
@@ -114,7 +148,7 @@ function genWorld(seed, kind, nTanks) {
     let j = 0;
     for (let x = 0; x < WW; x++) { while (j < pts.length - 2 && pts[j + 1][0] < x) j++; const [x0, y0] = pts[j], [x1, y1] = pts[j + 1]; const t = clamp((x - x0) / Math.max(1, x1 - x0), 0, 1); const e = (1 - Math.cos(t * Math.PI)) / 2; col(x, y0 + (y1 - y0) * e + Math.sin(x / 37 + ph[0]) * 9 + Math.sin(x / 13 + ph[1]) * 4, WH - 1, 1); }
     for (let i = 0; i < k; i++) if (R() < 0.6) { const x = (i + 1) * seg + rand(-60, 60); rect(x - rand(80, 140), WH * rand(0.35, 0.55), rand(90, 160), 22, 2); }
-  } else if (['sphinx', 'logbridge', 'island', 'grave'].includes(kind)) {
+  } else if (['sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'].includes(kind)) {
     paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank, valleys);
   } else if (kind === 'donuts') {
     // 도넛 섬: 하늘에 도넛 모양 땅이 잔뜩, 탱크는 저마다 도넛 안에서 시작 (껍질을 부숴야 밖으로 쏠 수 있음)
@@ -164,6 +198,9 @@ function standSpots(w) { const out = [], s = (x, y) => isSolidW(w, x, y); for (l
 function shuffleR(a, R) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function surfaceYW(w, x) { for (let y = 0; y < w.WH; y++) if (isSolidW(w, x, y)) return y; return w.WH + 50; }
 function pickSpawns(w, n, R) {
+  if (w.kind === 'wcave') { // 동굴 바닥 찾기: 동굴 가운데 높이에서 아래로 내려가 처음 닿는 땅
+    const c = []; for (const v of w.valleys) { const y0 = Math.round(w.WH * 0.36); if (isSolidW(w, v.x, y0)) continue; let y = y0; while (y < w.WH - 2 && !isSolidW(w, v.x, y + 1)) y++; if (y < w.WH - 2) c.push({ x: v.x, y }); }
+    if (c.length >= n) { const st = c.length / n; return shuffleR([...Array(n)].map((_, i) => c[Math.floor(i * st + st / 2)]), R); } }
   if (w.kind === 'donuts' && w.valleys.length >= n) return shuffleR(w.valleys.slice(0, n).map(v => ({ x: v.x, y: v.y })), R);
   if (w.kind === 'scorched' && w.valleys.length >= n) return shuffleR(w.valleys.slice(0, n).map(vx => { const x = Math.round(vx); return { x, y: surfaceYW(w, x) - 1 }; }), R);
   const spots = shuffleR(standSpots(w), R); let minD = w.WW / (n + 0.5) * 0.85; const res = [];
@@ -215,7 +252,7 @@ function makeSim(w, tanks, opts) {
   /* ---- 보급 상자 ---- */
   function rollCrate() { const tot = CRATE_POOL.reduce((a, b) => a + b[1], 0); let x = R() * tot; for (const [k, wt] of CRATE_POOL) { x -= wt; if (x <= 0) return k; } return 'gold'; }
   S.dropCrate = function () {
-    const x = Math.round(rand(150, WW - 150)); let y = 0; while (y < WH && !(isSolid(x, y + 1) || isSolid(x - 10, y + 1) || isSolid(x + 10, y + 1))) y++;
+    let x = Math.round(rand(150, WW - 150)), y = 0; if (w.kind === 'wcave') { for (let k = 0; k < 20 && isSolid(x, WH * 0.36); k++) x = Math.round(rand(150, WW - 150)); y = Math.round(WH * 0.36); } while (y < WH && !(isSolid(x, y + 1) || isSolid(x - 10, y + 1) || isSolid(x + 10, y + 1))) y++;
     if (y >= WH - 2) return null;
     const c = { id: S.crateSeq++, x, y, item: rollCrate() }; S.crates.push(c); return c;
   };

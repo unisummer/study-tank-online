@@ -152,10 +152,12 @@ table.res .n{text-align:right}
   <div class="bl" id="moveCtl">
     <button class="cbtn" id="bL">◀</button>
     <button class="cbtn" id="bR">▶</button>
+    <button class="cbtn hidden" id="bRU">▲</button><button class="cbtn hidden" id="bRD">▼</button>
     <button class="cbtn" id="bJump" style="font-size:15px">점프</button>
     <div class="fuel">연료<div class="bar"><i id="fuelBar"></i></div></div>
   </div>
   <div class="br" id="actCtl">
+    <button class="wbtn hidden" id="bRopeOff" style="background:#5b3fa8">🕸 거미줄<small>끄기</small></button>
     <button class="wbtn" id="bItem">아이템<small id="itemCount">0</small></button>
     <button class="wbtn" id="bWeapon"><span id="wName">기본포</span><small id="wAmmo">∞</small></button>
   </div>
@@ -361,7 +363,7 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
 function hashStr(s){let h=2166136261;for(const ch of s){h^=ch.codePointAt(0);h=Math.imul(h,16777619)>>>0}return h.toString(16)}
 const DEFAULT_DATA=()=>({gold:300,honor:0,up:{barrel:0,armor:0,engine:0},
   ammo:{scatter:3,big:1,dig:2,mirv:0,roller:1,dirtS:2,dirt:1,dirtL:0,triple:0,leap:0,napalm:0,air:0,death:0,nuke:0},
-  items:{repairS:1,repair:0,repairL:0,scope:1,double:0,shield:0,chute:1,tele:0,warp:1,spider:1},
+  items:{repairS:1,repair:0,repairL:0,scope:1,double:0,shield:0,chute:1,tele:0,warp:1,spider:1,rope:2},
   stats:{games:0,wins:0,beat:0,kills:0,qRight:0,qTotal:0,made:0},
   qDay:'',qToday:0,madeDay:'',madeToday:0,
   set:{anywhere:false,sound:true,music:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4}});
@@ -636,8 +638,9 @@ const ITEMS={
 ITEMS.tele={name:'순간이동',desc:'누른 곳 아래 땅으로 이동',price:120};
 ITEMS.warp={name:'이동 포탄',desc:'다음 포탄이 떨어진 곳으로 내 탱크가 날아감 (피해 없음)',price:90};
 ITEMS.spider={name:'스파이더',desc:'이번 라운드 동안 벽·천장에 붙어 다니고 잘 안 떨어짐',price:150};
+ITEMS.rope={name:'🕸 거미줄',desc:'이번 턴 동안 거미줄을 쏴서 매달려 이동 · 조준해서 놓으면 발사 · ↑↓(W·S) 줄 길이 · ◀▶ 흔들기 · 점프로 끊고 날아가기',price:70};
 ITEMS.rainbow={name:'무지개 방어막',desc:'피해를 3번 완전히 막아 줌 · 다른 방어막과 함께 못 씀',price:260};
-const IORDER=['repairS','repair','repairL','scope','double','shield','rainbow','chute','tele','warp','spider'];
+const IORDER=['repairS','repair','repairL','scope','double','shield','rainbow','chute','tele','warp','spider','rope'];
 // 시작 아이템: 전투에서 누르지 않아도 라운드가 시작되면 자동으로 쓰임
 ITEMS.startShield={name:'시작 방어막',desc:'라운드가 시작되자마자 자동으로 방어막이 켜짐 (라운드마다 1개 사용)',price:110};
 const SORDER=['startShield'];
@@ -665,7 +668,10 @@ const MAPS={
  sphinx:{name:'스핑크스 계단',desc:'양쪽 끝이 계단처럼 솟고 가운데는 넓게 파인 이집트 맵. 높은 계단이 유리해요'},
  logbridge:{name:'외나무다리',desc:'양쪽 절벽 사이에 얇은 외나무다리 하나! 다리가 끊어지면 아래로 떨어져요'},
  island:{name:'구름 섬',desc:'가운데 초가집이 있는 섬, 양옆은 몽실몽실 구름 발판'},
- grave:{name:'비석 언덕',desc:'얇은 땅 위에 비석이 줄지어 있고, 가장자리로 갈수록 땅이 두꺼워져요'}
+ grave:{name:'비석 언덕',desc:'얇은 땅 위에 비석이 줄지어 있고, 가장자리로 갈수록 땅이 두꺼워져요'},
+ wisland:{name:'웜즈 섬',desc:'웜즈처럼 바다 위 울퉁불퉁한 섬! 섬 속에 동굴 구멍이 숭숭, 빠지면 탈락'},
+ wcave:{name:'웜즈 동굴',desc:'천장이 막힌 큰 동굴. 너무 높이 쏘면 천장에 맞아요. 종유석과 기둥을 부수며 싸워요'},
+ cheese:{name:'치즈 섬',desc:'구멍 숭숭 커다란 치즈 덩어리 위에서 싸워요. 구멍으로 숨거나 빠질 수 있어요'}
 };
 let valleys=[],bedrockY=99999; // 언덕·스코치드 협곡은 맨 아래 단단한 암반(부서지지 않음)
 const MAPKEYS=Object.keys(MAPS);
@@ -716,6 +722,40 @@ function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank,
     const k = Math.round(WW / 260);
     for (let i = 0; i < k; i++) { const x = (i + 0.5) / k * WW + rand(-60, 60), y = surf(x), w = rand(22, 30), h = rand(40, 62);
       for (let xx = Math.ceil(x - w / 2); xx <= x + w / 2; xx++) { const d = Math.abs(xx - x) / (w / 2); col(xx, y - h - Math.sqrt(Math.max(0, 1 - d * d)) * w * 0.45, y + 4, 2); } }
+  } else if (kind === 'wisland') {
+    // 웜즈 섬: 바다 위에 울퉁불퉁한 큰 섬 2~3개, 섬 속에 동굴 구멍이 숭숭, 떠 있는 바위 조각
+    const n = 2 + Math.floor(R() * 2), gap = rand(140, 220), w = (WW - gap * (n + 1)) / n;
+    const ph = [rand(0, 6), rand(0, 6), rand(0, 6), rand(0, 6)];
+    const noise = (x, k) => Math.sin(x / 97 + ph[k]) * 40 + Math.sin(x / 41 + ph[k + 1]) * 16 + Math.sin(x / 17 + ph[k]) * 5;
+    for (let i = 0; i < n; i++) { const x0 = gap + i * (w + gap), x1 = x0 + w, top = WH * rand(0.36, 0.5), bot = WH * rand(0.8, 0.9);
+      for (let x = Math.floor(x0 - 40); x < x1 + 40; x++) { const t = (x - x0) / w; const edge = Math.min(1, Math.min(t, 1 - t) * 6 + 0.15); if (edge <= 0.05) continue;
+        const y0 = top + noise(x, 0) + (1 - edge) * 260, y1 = bot + noise(x, 2) * 0.6 - (1 - edge) * 120; if (y1 > y0) col(x, y0, y1, 1); }
+      // 동굴 구멍
+      const holes = 3 + Math.floor(R() * 4); for (let h = 0; h < holes; h++) ellipse(rand(x0 + 60, x1 - 60), rand(top + 110, bot - 70), rand(40, 90), rand(28, 55), 0);
+    }
+    // 떠 있는 바위
+    const k = Math.round(WW / 700); for (let i = 0; i < k; i++) ellipse(rand(80, WW - 80), WH * rand(0.14, 0.32), rand(50, 110), rand(14, 26), 1);
+  } else if (kind === 'wcave') {
+    // 웜즈 동굴: 위에도 천장이 막힌 큰 동굴. 종유석·석순 기둥, 가운데 떠 있는 바위 (높이 쏘면 천장에 맞음)
+    const ph = [rand(0, 6), rand(0, 6), rand(0, 6)];
+    const ceil = x => WH * 0.13 + Math.sin(x / 120 + ph[0]) * 40 + Math.sin(x / 37 + ph[1]) * 12;
+    const floor = x => WH * 0.8 + Math.sin(x / 140 + ph[2]) * 50 + Math.sin(x / 29 + ph[0]) * 10;
+    for (let x = 0; x < WW; x++) { col(x, 0, ceil(x), 2); col(x, ceil(x) - 30, ceil(x), 1); col(x, floor(x), WH - 1, 1); }
+    // 종유석(위에서 아래로)과 석순(아래에서 위로)
+    const k = Math.round(WW / 260);
+    for (let i = 0; i < k; i++) { const x = rand(60, WW - 60), w = rand(26, 60), up = R() < 0.5, len = rand(90, 260);
+      for (let xx = Math.ceil(x - w); xx <= x + w; xx++) { const d = 1 - Math.abs(xx - x) / w; if (up) col(xx, floor(xx) - len * d, floor(xx), 1); else col(xx, ceil(xx), ceil(xx) + len * d, 1); } }
+    // 천장과 바닥을 잇는 큰 기둥 몇 개
+    const pc = 1 + Math.floor(WW / 1600); for (let i = 0; i < pc; i++) { const x = (i + 0.5) / pc * WW + rand(-120, 120), w = rand(40, 70); for (let xx = Math.ceil(x - w); xx <= x + w; xx++) col(xx, ceil(xx), floor(xx), 1); ellipse(x, (ceil(x) + floor(x)) / 2, w * 0.7, rand(50, 90), 0); }
+    const fk = Math.round(WW / 600); for (let i = 0; i < fk; i++) ellipse(rand(100, WW - 100), WH * rand(0.4, 0.58), rand(60, 130), rand(16, 28), 1);
+    // 시작 자리: 바닥 위 (천장 위가 아니라 동굴 안)
+    for (let i = 0; i < 24; i++) { const x = Math.round((i + 0.5) / 24 * WW); valleys.push({ x, y: -1 }); }
+  } else if (kind === 'cheese') {
+    // 치즈 섬: 구멍 숭숭 뚫린 커다란 치즈 덩어리들, 아래는 물
+    const blocks = 2 + Math.floor(WW / 1500);
+    for (let b = 0; b < blocks; b++) { const w = WW / blocks * rand(0.62, 0.8), x0 = (b + 0.5) * WW / blocks - w / 2, top = WH * rand(0.34, 0.52), bot = WH * rand(0.78, 0.88), slope = rand(-0.12, 0.12);
+      for (let x = Math.floor(x0); x < x0 + w; x++) { const y0 = top + (x - x0) * slope; col(x, y0, bot, 1); }
+      const holes = Math.round(w * (bot - top) / 9000); for (let h = 0; h < holes; h++) { const r = rand(16, 54); ellipse(rand(x0 + r, x0 + w - r), rand(top + r + 10, bot - r), r, r, 0); } }
   }
   void cl; void valleys;
 }
@@ -759,7 +799,7 @@ function genTerrain(th,kind,nTanks){
     c.lineTo(WW,WH);c.fill();
     // 바위 턱 몇 개
     for(let i=0;i<k;i++)if(Math.random()<0.6){c.fillStyle=MAT.stone;const x=(i+1)*seg+rand(-60,60);c.fillRect(x-rand(80,140),WH*rand(0.35,0.55),rand(90,160),22)}
-  }else if(['sphinx','logbridge','island','grave'].includes(kind)){
+  }else if(['sphinx','logbridge','island','grave','wisland','wcave','cheese'].includes(kind)){
     // 포트리스2 맵 참고 — 온라인 엔진과 같은 코드(paintExtraMap)로 그린 뒤 캔버스에 옮김
     const mat=new Uint8Array(WW*WH);const R=Math.random,rnd=(a,b)=>a+R()*(b-a);
     const col=(x,y0,y1,m)=>{x|=0;if(x<0||x>=WW)return;y0=Math.max(0,Math.ceil(y0));y1=Math.min(WH-1,Math.floor(y1));for(let y=y0;y<=y1;y++)mat[y*WW+x]=m};
@@ -807,6 +847,8 @@ function genTerrain(th,kind,nTanks){
 // 탱크가 설 수 있는 자리 찾기 (여러 층 모두)
 function standSpots(){const out=[];for(let x=50;x<WW-50;x+=14){for(let y=45;y<WH-40;y++){if(isSolid(x,y)&&!isSolid(x,y-1)&&!isSolid(x,y-24)&&!isSolid(x,y-44)&&(isSolid(x-8,y+2)||isSolid(x+8,y+2)))out.push({x,y:y-1})}}return out}
 function pickSpawns(n){
+  if(mapKind==='wcave'){const c=[];for(const v of valleys){const y0=Math.round(WH*0.36);if(isSolid(v.x,y0))continue;let y=y0;while(y<WH-2&&!isSolid(v.x,y+1))y++;if(y<WH-2)c.push({x:v.x,y})}
+    if(c.length>=n){const st=c.length/n;return shuffle([...Array(n)].map((_,i)=>c[Math.floor(i*st+st/2)]))}}
   if(mapKind==='donuts'&&valleys.length>=n)return shuffle(valleys.slice(0,n).map(v=>({x:v.x,y:v.y})));
   if(mapKind==='scorched'&&valleys.length>=n){return shuffle(valleys.slice(0,n).map(vx=>{const x=Math.round(vx);let y=surfaceY(x);return{x,y:y-1}}))}const spots=shuffle(standSpots());let minD=WW/(n+0.5)*0.85;const res=[];
   while(res.length<n&&minD>20){res.length=0;for(const s0 of spots){if(res.every(r=>Math.hypot(r.x-s0.x,(r.y-s0.y)*0.8)>minD))res.push(s0);if(res.length>=n)break}minD*=0.85}
@@ -880,6 +922,7 @@ function nextTurn(first){
       if(G.cycle>G.maxCycles){endRound('time');return}}
     first=false;if(G.tanks[idx].alive)break}
   G.turn=idx;const t=G.tanks[idx];G.cur=t;
+  for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
   G.state='aim';G.timer=t.isAI?99:20;G.shots=1;G.scope=false;G.double=false;G.teleArm=false;G.warp=false;G.repairUsed=false;t.fuel=t.fuelMax;
   G.wind=clamp((G.wind||0)*0.4+rand(-0.8,0.8),-1,1)*WINDMAX;
   G.panHold=0;aim=null;closeTray();
@@ -902,6 +945,8 @@ function haveAmmo(t,w){if(w==='basic')return true;if(t===G.me)return (D.ammo[w]|
 function useAmmo(t,w){if(w==='basic')return;if(t===G.me){D.ammo[w]--;saveNow()}else t.ammo[w]--}
 function muzzle(t,a){const r=t.rot||0;return{x:t.x+Math.sin(r)*4+Math.cos(a)*22,y:t.y-10-Math.cos(r)*4+Math.sin(a)*22}}
 function fire(t,ang,pow,w){
+  if(G&&G.ropeArm&&t===G.me&&myAimTurn()){ropeShoot(t,ang);return}
+  if(t.rope)releaseRope(t,true);
   if(G&&G.online){if(t===G.me&&window.onlineFire)window.onlineFire(ang,pow,w);return}
   if(!haveAmmo(t,w))w='basic';
   const warp=t===G.me&&G.warp;if(warp){w='basic';G.warp=false;G.double=false}
@@ -975,7 +1020,7 @@ function explode(p){
 /* ---------- 하늘 보급 상자 (운 요소) ---------- */
 const CRATE_POOL=[['nuke',1],['death',2],['air',3],['triple',3],['napalm',3],['leap',3],['dirtL',2],['gold',3],['repair',2]];
 function rollCrate(){const tot=CRATE_POOL.reduce((a,b)=>a+b[1],0);let x=Math.random()*tot;for(const [k,w] of CRATE_POOL){x-=w;if(x<=0)return k}return 'gold'}
-function dropCrate(){const x=rand(150,WW-150);G.crates.push({x,y:-60,vy:0,landed:false,item:rollCrate()});addText(G.cur?G.cur.x:x,(G.cur?G.cur.y:300)-90,'하늘에서 보급 상자가 내려와요!','#ffd43b',2,18)}
+function dropCrate(){let x=rand(150,WW-150),y0=-60;if(mapKind==='wcave'){for(let k=0;k<20&&isSolid(x,WH*0.36);k++)x=rand(150,WW-150);y0=WH*0.36}G.crates.push({x,y:y0,vy:0,landed:false,item:rollCrate()});addText(G.cur?G.cur.x:x,(G.cur?G.cur.y:300)-90,'하늘에서 보급 상자가 내려와요!','#ffd43b',2,18)}
 function giveCrate(c,t){c.gone=true;const k=c.item;let label;
   if(k==='gold'){label='+150G';if(t===G.me)addGold('보급 상자',150)}
   else if(k==='repair'){label='수리 키트 중';if(t===G.me){D.items.repair++;saveNow()}else t.hp=Math.min(t.hpMax,t.hp+20)}
@@ -1025,6 +1070,7 @@ function spiderPhysics(t,dt){
   t.x=clamp(x,12,WW-12);t.y=y+10;return true}
 function tankPhysics(t,dt){
   if(!t.alive)return;
+  if(t.rope){ropePhysics(t,dt);return}
   if(t.spider&&spiderPhysics(t,dt))return;
   // 흙에 묻혔으면 위로 빠져나오기
   if(!t.spider){let n=0;while(isSolid(t.x,t.y-2)&&n<120){t.y--;n++}t.rot=0}
@@ -1049,6 +1095,7 @@ function tankPhysics(t,dt){
   t.x=clamp(t.x,12,WW-12);
 }
 function moveTank(t,dir,dt){
+  if(t.rope)return;
   if(t.air||t.fuel<=0)return;
   if(t.spider&&t.nx!==undefined){let tx=-t.ny,ty=t.nx;
     // 같은 버튼을 계속 누르면 모서리를 돌아 계속 같은 방향으로 기어감
@@ -1066,8 +1113,41 @@ function moveTank(t,dir,dt){
   t.fuel=Math.max(0,t.fuel-26*dt);
   const a=t.angle;if((dir>0&&Math.cos(a)<0)||(dir<0&&Math.cos(a)>0))t.angle=-Math.PI-a; // 바라보는 쪽 바꾸기
 }
-function jumpTank(t){if(t.air||t.fuel<15)return;
+function jumpTank(t){if(t.rope){releaseRope(t);return}if(t.air||t.fuel<15)return;
   if(t.spider&&t.nx!==undefined){t.vx=t.nx*220;t.vy=t.ny*300-80;t.fuel-=15;t.air=true;t.peak=t.y;t.detachT=0.3;t.x+=t.nx*4;t.y+=t.ny*4;return}t.vy=-300;t.vx=(Math.cos(t.angle)>=0?1:-1)*110;t.fuel-=15;t.air=true;t.peak=t.y;t.y-=2}
+
+/* ---------- 🕸 거미줄 (웜즈 닌자 로프처럼) ---------- */
+const ROPE={max:820,min:26,climb:190,swing:560,grav:GRAV};let ropeV=0;
+function ropeRay(t,ang){const o={x:t.x,y:t.y-14};for(let d=20;d<=ROPE.max;d+=3){const x=o.x+Math.cos(ang)*d,y=o.y+Math.sin(ang)*d;if(x<0||x>=WW||y>=WH)return null;if(y>=0&&isSolid(x,y))return{x,y,d}}return null}
+function ropeShoot(t,ang){const h=ropeRay(t,ang);t.angle=ang;sfx('fire');
+  if(!h){addText(t.x,t.y-50,'거미줄이 닿지 않았어요','#fff',1,15);return}
+  t.rope={ax:h.x,ay:h.y,L:Math.max(ROPE.min,h.d)};t.air=true;t.vx=t.vx||0;t.vy=Math.min(t.vy||0,0);t.chuteOpen=false;
+  for(let i=0;i<8;i++)G.parts.push({x:h.x,y:h.y,vx:rand(-60,60),vy:rand(-60,60),life:0.4,max:0.4,size:3,color:'#fff',grav:0});addText(h.x,h.y-16,'철컥!','#fff',0.8,14)}
+function releaseRope(t,quiet){if(!t.rope)return;t.rope=null;t.air=true;t.peak=t.y;if(!quiet)addText(t.x,t.y-50,'슝!','#fff',0.8,16)}
+function ropePhysics(t,dt){const r=t.rope;const n=4,h=dt/n;
+  for(let k=0;k<n;k++){
+    const px=t.x,py=t.y-14;let dx=px-r.ax,dy=py-r.ay;let d=Math.hypot(dx,dy)||1;const ux=dx/d,uy=dy/d;
+    // 줄 길이 바꾸기 (↑ 짧게, ↓ 길게) — 땅에 막히면 멈춤
+    if(t===G.me&&ropeV&&myAimTurn()){const nL=clamp(r.L+ropeV*ROPE.climb*h,ROPE.min,ROPE.max);const tx=r.ax+ux*nL,ty=r.ay+uy*nL;if(!solidNear(tx,ty,8))r.L=nL}
+    // 중력 + 좌우 흔들기 (줄에 수직 방향으로 밀기)
+    t.vy+=ROPE.grav*h;
+    if(t===G.me&&moveDir&&myAimTurn()){const tx=-uy,ty=ux;const s=(tx*moveDir>0)?1:-1;t.vx+=tx*s*ROPE.swing*h;t.vy+=ty*s*ROPE.swing*h}
+    let nx=px+t.vx*h,ny=py+t.vy*h;
+    // 줄 길이를 넘으면 원 위로 끌어당김 + 바깥으로 나가는 속도 없애기
+    dx=nx-r.ax;dy=ny-r.ay;d=Math.hypot(dx,dy)||1;
+    if(d>r.L){nx=r.ax+dx/d*r.L;ny=r.ay+dy/d*r.L;const ex=dx/d,ey=dy/d,vr=t.vx*ex+t.vy*ey;if(vr>0){t.vx-=ex*vr;t.vy-=ey*vr}}
+    // 땅에 부딪히면 튕김
+    if(solidNear(nx,ny,9)){ // 벽에 닿으면 미끄러지듯 한쪽 방향만 움직이고, 그것도 막히면 살짝 튕김
+      if(!solidNear(nx,py,9)){ny=py;t.vy*=-0.25}else if(!solidNear(px,ny,9)){nx=px;t.vx*=-0.25}else{t.vx*=-0.35;t.vy*=-0.35;continue}}
+    t.x=clamp(nx,12,WW-12);t.y=ny+14;
+  }
+  t.vx*=Math.pow(0.995,dt*60);t.vy*=Math.pow(0.995,dt*60);
+  t.rot=Math.atan2(t.x-r.ax,-(t.y-14-r.ay))*0;  // 탱크는 똑바로
+  if(t.y>WH+30){releaseRope(t,true);addText(t.x,WH-40,'풍덩! 물에 빠졌어요','#bfe9ff',1.6,22);killTank(t)}}
+function drawRopes(){for(const t of G.tanks){if(!t.rope||!t.alive)continue;const r=t.rope;
+  ctx.strokeStyle='rgba(255,255,255,.92)';ctx.lineWidth=2.2;ctx.beginPath();ctx.moveTo(t.x,t.y-14);ctx.lineTo(r.ax,r.ay);ctx.stroke();
+  ctx.strokeStyle='rgba(180,180,200,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(t.x+2,t.y-14);ctx.lineTo(r.ax+2,r.ay);ctx.stroke();
+  ctx.fillStyle='#e8e8f0';ctx.beginPath();ctx.arc(r.ax,r.ay,4.5,0,7);ctx.fill()}}
 
 /* ---------- 궤적 시뮬레이션 (조준선·컴퓨터) ---------- */
 function simulate(t,ang,pow,wind,maxT,collect){
@@ -1212,13 +1292,17 @@ function holdBtn(el,dir){const on=e=>{e.preventDefault();ensureAudio();moveDir=d
   el.addEventListener('pointerdown',on);el.addEventListener('pointerup',off);el.addEventListener('pointerleave',off);el.addEventListener('pointercancel',off)}
 holdBtn($('#bL'),-1);holdBtn($('#bR'),1);
 $('#bJump').addEventListener('pointerdown',e=>{e.preventDefault();if(myAimTurn())jumpTank(G.me)});
+for(const [id,v] of [['#bRU',-1],['#bRD',1]]){const b=$(id);b.addEventListener('pointerdown',e=>{e.preventDefault();ropeV=v});['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>{ropeV=0}))}
+$('#bRopeOff').onclick=()=>{G.ropeArm=false;if(G.me&&G.me.rope)releaseRope(G.me);updateHud()};
 // 키보드: ←→ 또는 A·D 이동, ↑·W·스페이스 점프 (한글 입력 상태에서도 되도록 자판 위치로 확인), Q 내 탱크 보기, E 따라가기 켜고 끄기
 const KEY_L=['ArrowLeft','KeyA'],KEY_R=['ArrowRight','KeyD'],KEY_UP=['ArrowUp','KeyW','Space'];
 addEventListener('keydown',e=>{if(!G||e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;const c=e.code||e.key;
   if(KEY_L.includes(c))moveDir=-1;else if(KEY_R.includes(c))moveDir=1;
+  else if(G.me&&G.me.rope&&(c==='ArrowUp'||c==='KeyW')){ropeV=-1;e.preventDefault()}
+  else if(G.me&&G.me.rope&&(c==='ArrowDown'||c==='KeyS')){ropeV=1;e.preventDefault()}
   else if(KEY_UP.includes(c)){if(myAimTurn())jumpTank(G.me);e.preventDefault()}
   else if(c==='KeyQ'){focusMe()}else if(c==='KeyE'){toggleFollow()}});
-addEventListener('keyup',e=>{const c=e.code||e.key;if((KEY_L.includes(c)&&moveDir<0)||(KEY_R.includes(c)&&moveDir>0))moveDir=0});
+addEventListener('keyup',e=>{const c=e.code||e.key;if(['ArrowUp','KeyW','ArrowDown','KeyS'].includes(c))ropeV=0;if((KEY_L.includes(c)&&moveDir<0)||(KEY_R.includes(c)&&moveDir>0))moveDir=0});
 
 /* ---------- 무기 · 아이템 선택 ---------- */
 let trayKind=null;
@@ -1238,6 +1322,7 @@ function useItem(k){if(!myAimTurn()||!(D.items[k]>0))return;const t=G.me;if(G.on
   if(k==='double'){G.double=true;addText(t.x,t.y-50,'두 번 쏘기 준비!','#fff',1,16)}
   if(k==='warp'){G.warp=true;addText(t.x,t.y-50,'이동 포탄 장전!','#c9a6ff',1.2,16)}
   if(k==='spider'){t.spider=true;t.detachT=0;addText(t.x,t.y-50,'스파이더!','#c9ff7a',1.2,18)}
+  if(k==='rope'){G.ropeArm=true;addText(t.x,t.y-50,'🕸 거미줄 준비! 조준해서 놓으면 발사','#fff',1.6,16)}
   if(k==='tele'){G.teleArm=true;toast('갈 곳을 눌러 주세요');updateHud();return} // 실제로 옮겨질 때 개수 차감
   if(k==='shield'){t.shield=true;addText(t.x,t.y-50,'방어막!','#8ff',1,16)}
   if(k==='chute'){t.chute=true;addText(t.x,t.y-50,'낙하산 준비! 뛰어내려 보세요','#fff',1.4,16)}
@@ -1257,7 +1342,8 @@ function updateMyStat(){const m=G&&G.me;if(!m)return;const hp=Math.max(0,Math.ro
   $('#msHpTxt').textContent=`❤ ${hp} / ${mx}`;
   $('#msBuff').textContent=(m.shield?'🛡 ':'')+(m.rainbow>0?'🌈×'+m.rainbow+' ':'')+(m.spider?'🕷 ':'')+(m.chute?'🪂':'');
   const st=$('#myStat');st.classList.toggle('low',m.alive&&r<=0.3);st.classList.toggle('dead',!m.alive);
-  $('#bFollow').classList.toggle('on',!!(D&&D.set.follow))}
+  $('#bFollow').classList.toggle('on',!!(D&&D.set.follow));
+  const roped=!!(m.rope&&myAimTurn());$('#bRU').classList.toggle('hidden',!roped);$('#bRD').classList.toggle('hidden',!roped);$('#bRopeOff').classList.toggle('hidden',!(G.ropeArm&&myAimTurn()));$('#bJump').textContent=roped?'끊기':'점프'}
 function updateHud(){if(!G||!G.tanks)return;updateMyStat();const mine=G.cur===G.me;
   $('#hRound').textContent=(G.teamMode?`팀전 ${G.teamWins[0]}:${G.teamWins[1]} · `:'')+`라운드 ${G.round}/${G.totalRounds} · ${G.cycle}바퀴`;
   const ht=$('#hTurn');ht.classList.toggle('mine',mine&&G.me.alive);
@@ -1336,6 +1422,8 @@ function drawNameTag(t,x,y,s){const fs=Math.max(13,17.5/s*0.8);const pad=fs*0.45
   function rr(a,b,c,d,r){ctx.beginPath();ctx.moveTo(a+r,b);ctx.arcTo(a+c,b,a+c,b+d,r);ctx.arcTo(a+c,b+d,a,b+d,r);ctx.arcTo(a,b+d,a,b,r);ctx.arcTo(a,b,a+c,b,r);ctx.closePath()}}
 function drawAimPreview(){
   const t=G.me;if(!myAimTurn())return;const showing=aim&&aim.len>10;const ang=showing?aim.ang:t.angle;const pow=showing?aim.pow:(t.lastPow||0);
+  if(G.ropeArm){const h=ropeRay(t,ang);const L=h?h.d:ROPE.max;ctx.strokeStyle=h?'rgba(255,255,255,.9)':'rgba(255,255,255,.35)';ctx.setLineDash([8,8]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(t.x,t.y-14);ctx.lineTo(t.x+Math.cos(ang)*L,t.y-14+Math.sin(ang)*L);ctx.stroke();ctx.setLineDash([]);
+    if(h){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(h.x,h.y,6,0,7);ctx.fill()}return}
   if(showing||G.scope){const r=simulate(t,ang,Math.max(5,pow),G.scope?G.wind:0,6,true);const pts=r.pts;const lim=G.scope?pts.length:Math.min(pts.length,22);
     ctx.fillStyle=G.scope?'rgba(255,240,120,.95)':'rgba(255,255,255,.9)';for(let i=0;i<lim;i+=2){ctx.beginPath();ctx.arc(pts[i],pts[i+1],G.scope?3:3.2*(1-i/lim*0.6),0,7);ctx.fill()}}
 }
@@ -1373,7 +1461,7 @@ function render(){
   if(G&&G.tanks){
     if(G.ghost&&G.ghost.length>3){ctx.strokeStyle='rgba(255,255,255,.35)';ctx.setLineDash([6,8]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(G.ghost[0],G.ghost[1]);for(let i=2;i<G.ghost.length;i+=2)ctx.lineTo(G.ghost[i],G.ghost[i+1]);ctx.stroke();ctx.setLineDash([])}
     drawCrates();
-    G.tanks.forEach(drawTank);
+    drawRopes();G.tanks.forEach(drawTank);
     for(const p of G.proj)if(p.w==='napf'){ctx.fillStyle='rgba(255,140,0,.35)';ctx.beginPath();ctx.arc(p.x,p.y-2,11+Math.sin(performance.now()/60+p.x)*3,0,7);ctx.fill()}
     for(const p of G.proj){ctx.strokeStyle=p.w==='napf'?'rgba(255,120,0,.7)':'rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<p.trail.length;i+=2){i?ctx.lineTo(p.trail[i],p.trail[i+1]):ctx.moveTo(p.trail[i],p.trail[i+1])}ctx.stroke();
       const W=WEAPONS[p.w]||{};ctx.fillStyle=W.dirt?'#a0703c':p.w==='roller'?'#ddd':p.w==='napf'?'#ff8a00':p.w==='nuke'?'#ffe066':['big','death','triple','air'].includes(p.w)?'#ff6b3d':'#222';ctx.beginPath();ctx.arc(p.x,p.y,p.w==='nuke'?10:['big','death'].includes(p.w)?7:p.w==='napf'?4:5,0,7);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke()}
@@ -1594,7 +1682,7 @@ const WSTAT = {
   deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
 };
 const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
-const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave'];
+const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
 const CRATE_POOL = [['nuke', 1], ['death', 2], ['air', 3], ['triple', 3], ['napalm', 3], ['leap', 3], ['dirtL', 2], ['gold', 3], ['repair', 2]];
 const HEAL = { repairS: 15, repair: 20, repairL: 25 };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -1645,6 +1733,40 @@ function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank,
     const k = Math.round(WW / 260);
     for (let i = 0; i < k; i++) { const x = (i + 0.5) / k * WW + rand(-60, 60), y = surf(x), w = rand(22, 30), h = rand(40, 62);
       for (let xx = Math.ceil(x - w / 2); xx <= x + w / 2; xx++) { const d = Math.abs(xx - x) / (w / 2); col(xx, y - h - Math.sqrt(Math.max(0, 1 - d * d)) * w * 0.45, y + 4, 2); } }
+  } else if (kind === 'wisland') {
+    // 웜즈 섬: 바다 위에 울퉁불퉁한 큰 섬 2~3개, 섬 속에 동굴 구멍이 숭숭, 떠 있는 바위 조각
+    const n = 2 + Math.floor(R() * 2), gap = rand(140, 220), w = (WW - gap * (n + 1)) / n;
+    const ph = [rand(0, 6), rand(0, 6), rand(0, 6), rand(0, 6)];
+    const noise = (x, k) => Math.sin(x / 97 + ph[k]) * 40 + Math.sin(x / 41 + ph[k + 1]) * 16 + Math.sin(x / 17 + ph[k]) * 5;
+    for (let i = 0; i < n; i++) { const x0 = gap + i * (w + gap), x1 = x0 + w, top = WH * rand(0.36, 0.5), bot = WH * rand(0.8, 0.9);
+      for (let x = Math.floor(x0 - 40); x < x1 + 40; x++) { const t = (x - x0) / w; const edge = Math.min(1, Math.min(t, 1 - t) * 6 + 0.15); if (edge <= 0.05) continue;
+        const y0 = top + noise(x, 0) + (1 - edge) * 260, y1 = bot + noise(x, 2) * 0.6 - (1 - edge) * 120; if (y1 > y0) col(x, y0, y1, 1); }
+      // 동굴 구멍
+      const holes = 3 + Math.floor(R() * 4); for (let h = 0; h < holes; h++) ellipse(rand(x0 + 60, x1 - 60), rand(top + 110, bot - 70), rand(40, 90), rand(28, 55), 0);
+    }
+    // 떠 있는 바위
+    const k = Math.round(WW / 700); for (let i = 0; i < k; i++) ellipse(rand(80, WW - 80), WH * rand(0.14, 0.32), rand(50, 110), rand(14, 26), 1);
+  } else if (kind === 'wcave') {
+    // 웜즈 동굴: 위에도 천장이 막힌 큰 동굴. 종유석·석순 기둥, 가운데 떠 있는 바위 (높이 쏘면 천장에 맞음)
+    const ph = [rand(0, 6), rand(0, 6), rand(0, 6)];
+    const ceil = x => WH * 0.13 + Math.sin(x / 120 + ph[0]) * 40 + Math.sin(x / 37 + ph[1]) * 12;
+    const floor = x => WH * 0.8 + Math.sin(x / 140 + ph[2]) * 50 + Math.sin(x / 29 + ph[0]) * 10;
+    for (let x = 0; x < WW; x++) { col(x, 0, ceil(x), 2); col(x, ceil(x) - 30, ceil(x), 1); col(x, floor(x), WH - 1, 1); }
+    // 종유석(위에서 아래로)과 석순(아래에서 위로)
+    const k = Math.round(WW / 260);
+    for (let i = 0; i < k; i++) { const x = rand(60, WW - 60), w = rand(26, 60), up = R() < 0.5, len = rand(90, 260);
+      for (let xx = Math.ceil(x - w); xx <= x + w; xx++) { const d = 1 - Math.abs(xx - x) / w; if (up) col(xx, floor(xx) - len * d, floor(xx), 1); else col(xx, ceil(xx), ceil(xx) + len * d, 1); } }
+    // 천장과 바닥을 잇는 큰 기둥 몇 개
+    const pc = 1 + Math.floor(WW / 1600); for (let i = 0; i < pc; i++) { const x = (i + 0.5) / pc * WW + rand(-120, 120), w = rand(40, 70); for (let xx = Math.ceil(x - w); xx <= x + w; xx++) col(xx, ceil(xx), floor(xx), 1); ellipse(x, (ceil(x) + floor(x)) / 2, w * 0.7, rand(50, 90), 0); }
+    const fk = Math.round(WW / 600); for (let i = 0; i < fk; i++) ellipse(rand(100, WW - 100), WH * rand(0.4, 0.58), rand(60, 130), rand(16, 28), 1);
+    // 시작 자리: 바닥 위 (천장 위가 아니라 동굴 안)
+    for (let i = 0; i < 24; i++) { const x = Math.round((i + 0.5) / 24 * WW); valleys.push({ x, y: -1 }); }
+  } else if (kind === 'cheese') {
+    // 치즈 섬: 구멍 숭숭 뚫린 커다란 치즈 덩어리들, 아래는 물
+    const blocks = 2 + Math.floor(WW / 1500);
+    for (let b = 0; b < blocks; b++) { const w = WW / blocks * rand(0.62, 0.8), x0 = (b + 0.5) * WW / blocks - w / 2, top = WH * rand(0.34, 0.52), bot = WH * rand(0.78, 0.88), slope = rand(-0.12, 0.12);
+      for (let x = Math.floor(x0); x < x0 + w; x++) { const y0 = top + (x - x0) * slope; col(x, y0, bot, 1); }
+      const holes = Math.round(w * (bot - top) / 9000); for (let h = 0; h < holes; h++) { const r = rand(16, 54); ellipse(rand(x0 + r, x0 + w - r), rand(top + r + 10, bot - r), r, r, 0); } }
   }
   void cl; void valleys;
 }
@@ -1692,7 +1814,7 @@ function genWorld(seed, kind, nTanks) {
     let j = 0;
     for (let x = 0; x < WW; x++) { while (j < pts.length - 2 && pts[j + 1][0] < x) j++; const [x0, y0] = pts[j], [x1, y1] = pts[j + 1]; const t = clamp((x - x0) / Math.max(1, x1 - x0), 0, 1); const e = (1 - Math.cos(t * Math.PI)) / 2; col(x, y0 + (y1 - y0) * e + Math.sin(x / 37 + ph[0]) * 9 + Math.sin(x / 13 + ph[1]) * 4, WH - 1, 1); }
     for (let i = 0; i < k; i++) if (R() < 0.6) { const x = (i + 1) * seg + rand(-60, 60); rect(x - rand(80, 140), WH * rand(0.35, 0.55), rand(90, 160), 22, 2); }
-  } else if (['sphinx', 'logbridge', 'island', 'grave'].includes(kind)) {
+  } else if (['sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'].includes(kind)) {
     paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank, valleys);
   } else if (kind === 'donuts') {
     // 도넛 섬: 하늘에 도넛 모양 땅이 잔뜩, 탱크는 저마다 도넛 안에서 시작 (껍질을 부숴야 밖으로 쏠 수 있음)
@@ -1742,6 +1864,9 @@ function standSpots(w) { const out = [], s = (x, y) => isSolidW(w, x, y); for (l
 function shuffleR(a, R) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function surfaceYW(w, x) { for (let y = 0; y < w.WH; y++) if (isSolidW(w, x, y)) return y; return w.WH + 50; }
 function pickSpawns(w, n, R) {
+  if (w.kind === 'wcave') { // 동굴 바닥 찾기: 동굴 가운데 높이에서 아래로 내려가 처음 닿는 땅
+    const c = []; for (const v of w.valleys) { const y0 = Math.round(w.WH * 0.36); if (isSolidW(w, v.x, y0)) continue; let y = y0; while (y < w.WH - 2 && !isSolidW(w, v.x, y + 1)) y++; if (y < w.WH - 2) c.push({ x: v.x, y }); }
+    if (c.length >= n) { const st = c.length / n; return shuffleR([...Array(n)].map((_, i) => c[Math.floor(i * st + st / 2)]), R); } }
   if (w.kind === 'donuts' && w.valleys.length >= n) return shuffleR(w.valleys.slice(0, n).map(v => ({ x: v.x, y: v.y })), R);
   if (w.kind === 'scorched' && w.valleys.length >= n) return shuffleR(w.valleys.slice(0, n).map(vx => { const x = Math.round(vx); return { x, y: surfaceYW(w, x) - 1 }; }), R);
   const spots = shuffleR(standSpots(w), R); let minD = w.WW / (n + 0.5) * 0.85; const res = [];
@@ -1793,7 +1918,7 @@ function makeSim(w, tanks, opts) {
   /* ---- 보급 상자 ---- */
   function rollCrate() { const tot = CRATE_POOL.reduce((a, b) => a + b[1], 0); let x = R() * tot; for (const [k, wt] of CRATE_POOL) { x -= wt; if (x <= 0) return k; } return 'gold'; }
   S.dropCrate = function () {
-    const x = Math.round(rand(150, WW - 150)); let y = 0; while (y < WH && !(isSolid(x, y + 1) || isSolid(x - 10, y + 1) || isSolid(x + 10, y + 1))) y++;
+    let x = Math.round(rand(150, WW - 150)), y = 0; if (w.kind === 'wcave') { for (let k = 0; k < 20 && isSolid(x, WH * 0.36); k++) x = Math.round(rand(150, WW - 150)); y = Math.round(WH * 0.36); } while (y < WH && !(isSolid(x, y + 1) || isSolid(x - 10, y + 1) || isSolid(x + 10, y + 1))) y++;
     if (y >= WH - 2) return null;
     const c = { id: S.crateSeq++, x, y, item: rollCrate() }; S.crates.push(c); return c;
   };
@@ -1975,7 +2100,7 @@ const $=s=>document.querySelector(s);
 const ON={token:null,name:null,ws:null,channel:'public',className:'',rooms:[],online:[],room:null,you:null,saveT:0,retry:0,classCode:''};
 window.ONLINE=ON;
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡',donuts:'도넛 섬',sphinx:'스핑크스 계단',logbridge:'외나무다리',island:'구름 섬',grave:'비석 언덕'};
+const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡',donuts:'도넛 섬',sphinx:'스핑크스 계단',logbridge:'외나무다리',island:'구름 섬',grave:'비석 언덕',wisland:'웜즈 섬',wcave:'웜즈 동굴',cheese:'치즈 섬'};
 const DATANAME={phon:'음운의 변동',add1:'덧셈 (한 자리)',add2:'덧셈 (두 자리)',sub1:'뺄셈',gugu:'구구단',free:'자유 문제'};
 const QUICK=['안녕!','잘했어!','한 판 더!','문제 풀고 올게','준비됐어?','좋은 게임!'];
 
@@ -2238,9 +2363,10 @@ function onRound(info){
 function onTurn(m){if(!G||!G.online)return;finishPlay();
   const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
+  for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
   t.fuel=t.fuelMax;BT.fell=false;BT.posKey='';
   if(m.extra){if(m.extra.survive&&G.me.alive&&!G.me.isAI)myGold('생존',m.extra.survive);
-    if(m.extra.crate){G.crates.push({id:m.extra.crate.id,x:m.extra.crate.x,y:-60,ty:m.extra.crate.y,landed:false});addText(t.x,t.y-90,'하늘에서 보급 상자가 내려와요!','#ffd43b',2,18)}}
+    if(m.extra.crate){G.crates.push({id:m.extra.crate.id,x:m.extra.crate.x,y:mapKind==='wcave'?m.extra.crate.y-200:-60,ty:m.extra.crate.y,landed:false});addText(t.x,t.y-90,'하늘에서 보급 상자가 내려와요!','#ffd43b',2,18)}}
   if(t===G.me&&!t.isAI){sfx('ok');if(mapView){cam.z=mapView.z;mapView=null;$('#bMap').textContent='🗺 전체 맵'}G.panHold=0}
   updateHud()}
 function myGold(l,a){if(a<=0)return;G.roundGold[l]=(G.roundGold[l]||0)+a;G.roundGoldTotal+=a;if(l!=='피해 보상'){addText(G.me.x,G.me.y-60,`+${a}G ${l}`,'#ffd43b',1.6,18);sfx('coin')}}
@@ -2348,6 +2474,7 @@ function onItemRes(m){if(!G||!G.online)return;const t=G.tanks[m.i];if(!t)return;
     else if(k==='scope'){G.scope=true;addText(t.x,t.y-50,'조준경!','#fff',1,16)}
     else if(k==='double'){G.double=true;addText(t.x,t.y-50,'두 번 쏘기 준비!','#fff',1,16)}
     else if(k==='warp'){G.warp=true;addText(t.x,t.y-50,'이동 포탄 장전!','#c9a6ff',1.2,16)}
+    else if(k==='rope'){G.ropeArm=true;addText(t.x,t.y-50,'🕸 거미줄 준비! 조준해서 놓으면 발사','#fff',1.6,16)}
     else addText(t.x,t.y-50,I.name+'!','#8ff',1.2,16)}
   else addText(t.x,t.y-50,`${I.name}!`,'#fff',1.2,15);
   updateHud()}

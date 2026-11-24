@@ -124,7 +124,7 @@ class Battle {
     else if (k === 'spider') t.spider = true;
     else if (k === 'double') this.flags.double = true;
     else if (k === 'warp') this.flags.warp = true;
-    else if (k === 'scope' || k === 'tele') { /* 휴대폰에서만 효과 (순간이동은 위치로 전달) */ }
+    else if (k === 'scope' || k === 'tele' || k === 'rope') { /* 휴대폰에서만 효과 (순간이동은 위치로 전달) */ }
     else ok = false;
     this.bc({ t: 'b_item', i: t.i, k, ok, tank: this.tankView(t) });
   }

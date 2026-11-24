@@ -9,7 +9,7 @@ const $=s=>document.querySelector(s);
 const ON={token:null,name:null,ws:null,channel:'public',className:'',rooms:[],online:[],room:null,you:null,saveT:0,retry:0,classCode:''};
 window.ONLINE=ON;
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡',donuts:'도넛 섬',sphinx:'스핑크스 계단',logbridge:'외나무다리',island:'구름 섬',grave:'비석 언덕'};
+const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡',donuts:'도넛 섬',sphinx:'스핑크스 계단',logbridge:'외나무다리',island:'구름 섬',grave:'비석 언덕',wisland:'웜즈 섬',wcave:'웜즈 동굴',cheese:'치즈 섬'};
 const DATANAME={phon:'음운의 변동',add1:'덧셈 (한 자리)',add2:'덧셈 (두 자리)',sub1:'뺄셈',gugu:'구구단',free:'자유 문제'};
 const QUICK=['안녕!','잘했어!','한 판 더!','문제 풀고 올게','준비됐어?','좋은 게임!'];
 
@@ -272,9 +272,10 @@ function onRound(info){
 function onTurn(m){if(!G||!G.online)return;finishPlay();
   const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
+  for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
   t.fuel=t.fuelMax;BT.fell=false;BT.posKey='';
   if(m.extra){if(m.extra.survive&&G.me.alive&&!G.me.isAI)myGold('생존',m.extra.survive);
-    if(m.extra.crate){G.crates.push({id:m.extra.crate.id,x:m.extra.crate.x,y:-60,ty:m.extra.crate.y,landed:false});addText(t.x,t.y-90,'하늘에서 보급 상자가 내려와요!','#ffd43b',2,18)}}
+    if(m.extra.crate){G.crates.push({id:m.extra.crate.id,x:m.extra.crate.x,y:mapKind==='wcave'?m.extra.crate.y-200:-60,ty:m.extra.crate.y,landed:false});addText(t.x,t.y-90,'하늘에서 보급 상자가 내려와요!','#ffd43b',2,18)}}
   if(t===G.me&&!t.isAI){sfx('ok');if(mapView){cam.z=mapView.z;mapView=null;$('#bMap').textContent='🗺 전체 맵'}G.panHold=0}
   updateHud()}
 function myGold(l,a){if(a<=0)return;G.roundGold[l]=(G.roundGold[l]||0)+a;G.roundGoldTotal+=a;if(l!=='피해 보상'){addText(G.me.x,G.me.y-60,`+${a}G ${l}`,'#ffd43b',1.6,18);sfx('coin')}}
@@ -382,6 +383,7 @@ function onItemRes(m){if(!G||!G.online)return;const t=G.tanks[m.i];if(!t)return;
     else if(k==='scope'){G.scope=true;addText(t.x,t.y-50,'조준경!','#fff',1,16)}
     else if(k==='double'){G.double=true;addText(t.x,t.y-50,'두 번 쏘기 준비!','#fff',1,16)}
     else if(k==='warp'){G.warp=true;addText(t.x,t.y-50,'이동 포탄 장전!','#c9a6ff',1.2,16)}
+    else if(k==='rope'){G.ropeArm=true;addText(t.x,t.y-50,'🕸 거미줄 준비! 조준해서 놓으면 발사','#fff',1.6,16)}
     else addText(t.x,t.y-50,I.name+'!','#8ff',1.2,16)}
   else addText(t.x,t.y-50,`${I.name}!`,'#fff',1.2,15);
   updateHud()}
