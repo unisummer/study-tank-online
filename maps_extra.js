@@ -97,13 +97,14 @@ function twisterStep(p, h, list, rand, onEvt, wind) {
     p.tw.a += 11 * h; p.y -= 430 * h; const r = 8 + Math.max(0, (t.base - p.y) / t.h) * t.w; p.x = t.x + Math.sin(p.tw.a) * r;
     if (p.y <= t.base - t.h) {
       const tw0 = p.tw; p.tw = null; (p.twUsed || (p.twUsed = {}))[t.id] = 1;
-      // 내가 쏜 힘 + 바람 + 회오리 힘을 합쳐서 계속 날아감 (꼭대기에서 힘을 잃고 그 자리로 떨어지지 않게)
+      // 꼭대기에서 아무 방향으로 튕겨 나감: 내가 쏜 힘(세기)과 바람·회오리 움직임을 합침 (꼭대기에서 힘을 잃고 그 자리로 떨어지지 않게)
       const vx0 = tw0.vx0 || 0, vy0 = tw0.vy0 || 0, s0 = Math.hypot(vx0, vy0), w = (wind || 0) * 1.6, drift = (t.vx || 0) * 2;
       if (t.fire) { // 불꽃 회오리: 원래 힘보다 세게, 방향은 예측 불가
         const sp = Math.max(420, s0) * (0.9 + rand(0, 0.5)), ang = rand(-Math.PI * 0.92, -Math.PI * 0.08);
         p.vx = Math.cos(ang) * sp + vx0 * 0.35 + w + drift; p.vy = Math.sin(ang) * sp * 0.8; p.dmgX = 2; if (onEvt) onEvt('fire_out', p); }
-      else { // 일반 회오리: 원래 가던 방향 그대로 + 위로 띄워 줌 + 바람
-        p.vx = vx0 * 0.9 + w + drift + rand(-40, 40); p.vy = -Math.max(220, Math.abs(vy0) * 0.45) - rand(0, 160); if (onEvt) onEvt('wind_out', p); }
+      else { // 일반 회오리: 불꽃 회오리처럼 앞뒤 상관없이 아무 방향으로 날아감 (힘은 조금 약하게, 피해는 그대로)
+        const sp = Math.max(360, s0) * (0.7 + rand(0, 0.5)), ang = rand(-Math.PI * 0.92, -Math.PI * 0.08);
+        p.vx = Math.cos(ang) * sp + w + drift; p.vy = Math.sin(ang) * sp * 0.8; if (onEvt) onEvt('wind_out', p); }
     }
     return true;
   }
