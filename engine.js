@@ -629,12 +629,12 @@ function makeSim(w, tanks, opts) {
     const humans = foes.filter(o => !o.isAI);
     let target = (humans.length && R() < 0.4) ? humans[Math.floor(R() * humans.length)] : foes.reduce((b, o) => Math.abs(o.x - t.x) < Math.abs(b.x - t.x) ? o : b, foes[0]);
     let best = { d: 1e9, a: -Math.PI / 4, pw: 60 };
-    for (let deg = 8; deg <= 172; deg += 4) { const a = -deg * Math.PI / 180; for (let pw = 22; pw <= 100; pw += 3) { const r = simulate(t, a, pw, S.wind, 6); if (r.out) continue; let d = Math.hypot(r.x - target.x, r.y - (target.y - 10)) + (r.hit === t ? 500 : 0) + (Math.hypot(r.x - t.x, r.y - t.y) < 70 ? 300 : 0); for (const mt of mates) if (Math.hypot(r.x - mt.x, r.y - (mt.y - 10)) < 70) d += 400; if (d < best.d) best = { d, a, pw }; } }
+    for (let deg = 8; deg <= 172; deg += 4) { const a = -deg * Math.PI / 180; for (let pw = 22; pw <= 200; pw += (pw < 100 ? 3 : 6)) { const r = simulate(t, a, pw, S.wind, 6); if (r.out) continue; let d = Math.hypot(r.x - target.x, r.y - (target.y - 10)) + (r.hit === t ? 500 : 0) + (Math.hypot(r.x - t.x, r.y - t.y) < 70 ? 300 : 0); for (const mt of mates) if (Math.hypot(r.x - mt.x, r.y - (mt.y - 10)) < 70) d += 400; if (d < best.d) best = { d, a, pw }; } }
     const noise = [[11, 6], [5, 2.6], [2, 1]][diff === undefined ? 1 : diff];
     let wpn = 'basic'; const ammo = t.ammo || {}; const opts2 = Object.keys(ammo).filter(k => ammo[k] > 0 && !WSTAT[k].dirt); const sup = opts2.filter(k => SUPER.includes(k));
     if (sup.length && R() < 0.5) wpn = sup[0]; else if (opts2.length && R() < 0.35) wpn = opts2[Math.floor(R() * opts2.length)];
     if (wpn !== 'basic') ammo[wpn]--;
-    return { a: best.a + rand(-noise[1], noise[1]) * Math.PI / 180, pw: clamp(best.pw + rand(-noise[0], noise[0]), 10, 100), w: wpn };
+    return { a: best.a + rand(-noise[1], noise[1]) * Math.PI / 180, pw: clamp(best.pw + rand(-noise[0], noise[0]) * (best.pw > 100 ? 1.6 : 1), 10, 200), w: wpn };
   };
   S.newWind = function () { S.wind = clamp((S.wind || 0) / WINDMAX * 0.4 + rand(-0.8, 0.8), -1, 1) * WINDMAX; return S.wind; };
   S.heal = HEAL;

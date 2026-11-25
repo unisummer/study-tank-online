@@ -68,7 +68,7 @@ textarea.inp{min-height:70px;resize:vertical}
 .tray button small{display:block;font-weight:500;color:#b8c7de;font-size:12px}
 .tray button.on{background:#2b6de8}
 .tray button:disabled{opacity:.4}
-#hint{position:absolute;top:56px;left:50%;transform:translateX(-50%);background:rgba(10,20,40,.7);border-radius:12px;padding:6px 12px;font-size:13px;color:#dfe8ff;pointer-events:none;text-align:center}
+#hint{position:absolute;top:104px;left:50%;transform:translateX(-50%);background:rgba(10,20,40,.7);border-radius:12px;padding:6px 12px;font-size:13px;color:#dfe8ff;pointer-events:none;text-align:center}
 /* modal */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:40;padding:12px;touch-action:pan-y}
 .modal .card{width:min(640px,100%);max-height:100%;overflow:auto}
@@ -89,7 +89,7 @@ textarea.inp{min-height:70px;resize:vertical}
 .qfoot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 .lockbar{height:4px;background:rgba(255,255,255,.1);border-radius:3px;margin-top:8px;overflow:hidden}
 .lockbar i{display:block;height:100%;background:#9cc3ff;width:0}
-#wordTip{position:absolute;top:58px;left:50%;transform:translateX(-50%);background:rgba(16,28,60,.88);border:2px solid #8fd3ff;border-radius:999px;padding:6px 16px;font-weight:800;font-size:15px;pointer-events:none!important;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+#wordTip{position:absolute;top:140px;left:50%;transform:translateX(-50%);background:rgba(16,28,60,.88);border:2px solid #8fd3ff;border-radius:999px;padding:6px 16px;font-weight:800;font-size:15px;pointer-events:none!important;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
 #wordTip small{color:#8fd3ff;font-weight:700;margin-left:6px}
 .vc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;margin-top:8px}
 .vc-item{background:rgba(255,255,255,.06);border-radius:10px;padding:7px 10px;font-size:14px;line-height:1.35}
@@ -115,6 +115,18 @@ label.f .gnum{width:22px;height:22px;font-size:13px;margin-right:6px;vertical-al
 #coach .bub button{border-radius:10px;padding:8px 14px;font-weight:800;font-size:14px;background:#ff7a1a;color:#fff}
 #coach .bub button.skip{background:transparent;color:#7a6200}
 #coach .bub .prog{position:absolute;left:16px;bottom:16px;font-size:12px;color:#8a7400}
+#turnBar{position:absolute;top:calc(max(8px,env(safe-area-inset-top)) + 46px);left:50%;transform:translateX(-50%);width:min(440px,60vw);pointer-events:none!important;text-align:center}
+#turnBar .tb-lab{display:inline-block;background:rgba(10,20,40,.85);border-radius:999px;padding:3px 14px;font-weight:800;font-size:14px;margin-bottom:4px}
+#turnBar .tb-out{height:12px;border-radius:99px;background:rgba(0,0,0,.45);overflow:hidden;border:2px solid rgba(255,255,255,.35)}
+#turnBar .tb-in{height:100%;border-radius:99px;background:#2ecc71;transition:width .12s linear,background .3s}
+#turnBar.mine .tb-out{border-color:#ffd43b;box-shadow:0 0 12px rgba(255,212,59,.6)}
+#turnBar.mine .tb-lab{background:#2b6de8}
+#turnBar.low .tb-lab{background:#d63031;animation:tbPulse .5s infinite alternate}
+@keyframes tbPulse{from{transform:scale(1)}to{transform:scale(1.12)}}
+#turnBanner{position:fixed;left:50%;top:32%;transform:translate(-50%,-50%) scale(.6);opacity:0;z-index:40;pointer-events:none;background:linear-gradient(180deg,#3fa7ff,#2b6de8);border:4px solid #ffd43b;border-radius:22px;padding:14px 30px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5);transition:all .25s}
+#turnBanner.on{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#turnBanner b{display:block;font-size:34px;font-weight:900;color:#fff;text-shadow:0 3px 0 rgba(0,0,0,.3)}
+#turnBanner span{font-size:15px;font-weight:700;color:#e6f2ff}
 #toast{position:fixed;left:50%;top:18%;transform:translateX(-50%);background:rgba(10,20,40,.92);border:2px solid #ffd43b;border-radius:14px;padding:10px 16px;font-weight:800;z-index:60;pointer-events:none;text-align:center;max-width:90vw}
 #rotate{position:fixed;inset:0;background:#0f1b2d;z-index:80;display:none;align-items:center;justify-content:center;text-align:center;font-size:20px;padding:30px;line-height:1.6}
 @media (orientation:portrait) and (max-width:760px){body.battle #rotate{display:flex}}
@@ -156,6 +168,7 @@ table.res .n{text-align:right}
 <canvas id="cv"></canvas>
 
 <!-- 전투 화면 HUD -->
+<div id="turnBanner"><b>🎯 내 차례!</b><span id="tbSub">이동 · 아이템 · 발사</span></div>
 <div id="hud" class="hidden">
   <div class="top">
     <div class="row" style="gap:6px">
@@ -170,6 +183,7 @@ table.res .n{text-align:right}
     </div>
   </div>
   <div id="hint"></div>
+  <div id="turnBar" class="hidden"><div class="tb-lab" id="tbLab"></div><div class="tb-out"><div class="tb-in" id="tbIn"></div></div></div>
   <div id="wordTip" class="hidden"></div>
   <div id="myStat">
     <div class="ms-row"><span class="ms-name" id="msName">나</span><span id="msBuff"></span></div>
@@ -705,6 +719,8 @@ function sfx(type){if(!AC||!D||!D.set.sound)return;const t=AC.currentTime;const 
   if(type==='fire'){o.type='square';o.frequency.setValueAtTime(260,t);o.frequency.exponentialRampToValueAtTime(70,t+0.18);g.gain.setValueAtTime(0.08,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.2);o.start(t);o.stop(t+0.21)}
   else if(type==='ok'){o.type='sine';o.frequency.setValueAtTime(660,t);o.frequency.setValueAtTime(990,t+0.09);g.gain.setValueAtTime(0.12,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.25);o.start(t);o.stop(t+0.26)}
   else if(type==='no'){o.type='triangle';o.frequency.setValueAtTime(220,t);o.frequency.setValueAtTime(160,t+0.12);g.gain.setValueAtTime(0.12,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.3);o.start(t);o.stop(t+0.31)}
+  else if(type==='myturn'){o.type='triangle';o.frequency.setValueAtTime(523,t);o.frequency.setValueAtTime(659,t+0.1);o.frequency.setValueAtTime(784,t+0.2);g.gain.setValueAtTime(0.14,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.45);o.start(t);o.stop(t+0.46)}
+  else if(type==='tick'){o.type='sine';o.frequency.setValueAtTime(1200,t);g.gain.setValueAtTime(0.07,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.06);o.start(t);o.stop(t+0.07)}
   else if(type==='coin'){o.type='square';o.frequency.setValueAtTime(880,t);o.frequency.setValueAtTime(1320,t+0.06);g.gain.setValueAtTime(0.05,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);o.start(t);o.stop(t+0.16)}
 }
 
@@ -1202,7 +1218,7 @@ function nextTurn(first){
     first=false;if(G.tanks[idx].alive)break}
   G.turn=idx;const t=G.tanks[idx];G.cur=t;wordTipNext();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
-  G.state='aim';G.timer=t.isAI?99:20;G.shots=1;G.scope=false;G.double=false;G.teleArm=false;G.warp=false;G.repairUsed=false;t.fuel=t.fuelMax;
+  G.state='aim';G.timer=t.isAI?99:20;G.timerMax=G.timer;G.camManual=false;if(t===G.me)setTimeout(()=>{if(G&&G.cur===G.me&&G.state==='aim')myTurnBanner()},350);G.shots=1;G.scope=false;G.double=false;G.teleArm=false;G.warp=false;G.repairUsed=false;t.fuel=t.fuelMax;
   G.wind=clamp((G.wind||0)*0.4+rand(-0.8,0.8),-1,1)*WINDMAX;
   { const before=G.twisters.length;twisterTurn(G.twisters,WW,surfTop,G.wind,rand,()=>G.twSeq++);const nw=G.twisters[G.twisters.length-1];
     if(G.twisters.length>before&&nw)addText(nw.x,nw.base-nw.h-30,nw.fire?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',nw.fire?'#ffb347':'#e8f4ff',2.4,22)}
@@ -1537,10 +1553,10 @@ function aiPlan(t){
   const foes=aliveTanks().filter(o=>o!==t&&!sameTeam(o,t));const mates=aliveTanks().filter(o=>o!==t&&sameTeam(o,t));let target=foes[0];
   if(G.me.alive&&!sameTeam(G.me,t)&&Math.random()<0.4)target=G.me;else target=foes.reduce((b,o)=>Math.abs(o.x-t.x)<Math.abs(b.x-t.x)?o:b,foes[0]);
   let best={d:1e9,a:-Math.PI/4,pw:60};
-  for(let deg=8;deg<=172;deg+=4){const a=-deg*Math.PI/180;for(let pw=22;pw<=100;pw+=3){const r=simulate(t,a,pw,G.wind,6,false);if(r.out)continue;let d=Math.hypot(r.x-target.x,r.y-(target.y-10))+(r.hit===t?500:0)+(Math.hypot(r.x-t.x,r.y-t.y)<70?300:0);for(const m of mates)if(Math.hypot(r.x-m.x,r.y-(m.y-10))<70)d+=400;if(d<best.d)best={d,a,pw}}}
+  for(let deg=8;deg<=172;deg+=4){const a=-deg*Math.PI/180;for(let pw=22;pw<=POWMAX;pw+=(pw<100?3:6)){const r=simulate(t,a,pw,G.wind,6,false);if(r.out)continue;let d=Math.hypot(r.x-target.x,r.y-(target.y-10))+(r.hit===t?500:0)+(Math.hypot(r.x-t.x,r.y-t.y)<70?300:0);for(const m of mates)if(Math.hypot(r.x-m.x,r.y-(m.y-10))<70)d+=400;if(d<best.d)best={d,a,pw}}}
   const noise=[[11,6],[5,2.6],[2,1]][G.diff];
   let w='basic';const opts=Object.keys(t.ammo).filter(k=>t.ammo[k]>0&&!WEAPONS[k].dirt);const sup=opts.filter(k=>SUPER.includes(k));if(sup.length&&Math.random()<0.5)w=sup[0];else if(opts.length&&Math.random()<0.35)w=opts[Math.floor(Math.random()*opts.length)];
-  return{a:best.a+rand(-noise[1],noise[1])*Math.PI/180,pw:clamp(best.pw+rand(-noise[0],noise[0]),10,100),w}}
+  return{a:best.a+rand(-noise[1],noise[1])*Math.PI/180,pw:clamp(best.pw+rand(-noise[0],noise[0])*(best.pw>100?1.6:1),10,POWMAX),w}}
 function aiUpdate(t,dt){const A=G.ai;A.t+=dt;
   if(A.phase==='move'){if(A.moveT>0&&groundBelow(t.x+A.dir*22,t.y,60)){moveTank(t,A.dir,dt);A.moveT-=dt}else if(A.moveT>0)A.moveT=0;else if(!t.air){A.phase='think';A.t=0}}
   else if(A.phase==='think'){if(A.t>A.think){A.plan=aiPlan(t);A.phase='aim';A.t=0;A.from=t.angle}}
@@ -1623,20 +1639,20 @@ function myAimTurn(){return G&&G.state==='aim'&&G.cur===G.me&&G.me.alive&&!QZ}
 cv.addEventListener('pointerdown',e=>{ensureAudio();try{musicUpdate()}catch(_){}if(!G)return;try{cv.setPointerCapture(e.pointerId)}catch(_){}
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});closeTray();
   if(ptrs.size===2){aim=null;pan=null;const [a,b]=[...ptrs.values()];pinch={d0:Math.hypot(a.x-b.x,a.y-b.y),z0:cam.z};return}
-  if(miniHit(e.clientX,e.clientY)){const m=MINI;cam.x=(e.clientX-m.x)/m.w*WW;cam.y=(e.clientY-m.y)/m.h*WH;G.panHold=4;clampCam();ptrs.delete(e.pointerId);return}
+  if(miniHit(e.clientX,e.clientY)){const m=MINI;cam.x=(e.clientX-m.x)/m.w*WW;cam.y=(e.clientY-m.y)/m.h*WH;G.panHold=4;G.camManual=true;clampCam();ptrs.delete(e.pointerId);return}
   if(G.teleArm&&myAimTurn()){doTeleport(e.clientX,e.clientY);ptrs.delete(e.pointerId);return}
   if(myAimTurn()){const ts=toScreen(G.me.x,G.me.y-12);const near=Math.hypot(e.clientX-ts.x,e.clientY-ts.y)<Math.max(56,40*sc());
-    if(near||D.set.anywhere){aim={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,ang:G.me.angle,pow:0,len:0};G.panHold=0;return}}
+    if(near||D.set.anywhere){aim={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,ang:G.me.angle,pow:0,len:0};if(!G.camManual)G.panHold=0;return}}
   pan={sx:e.clientX,sy:e.clientY,cx:cam.x,cy:cam.y};G.panHold=3});
 cv.addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(pinch&&ptrs.size>=2){const [a,b]=[...ptrs.values()];cam.z=pinch.z0*Math.hypot(a.x-b.x,a.y-b.y)/Math.max(10,pinch.d0);G.panHold=3;clampCam();return}
+  if(pinch&&ptrs.size>=2){const [a,b]=[...ptrs.values()];cam.z=pinch.z0*Math.hypot(a.x-b.x,a.y-b.y)/Math.max(10,pinch.d0);G.panHold=3;G.camManual=true;clampCam();return}
   if(aim){aim.x=e.clientX;aim.y=e.clientY;const dx=aim.sx-e.clientX,dy=aim.sy-e.clientY;aim.len=Math.hypot(dx,dy);
-    if(aim.len>10){aim.ang=Math.atan2(dy,dx);aim.base=clamp(aim.len/(Math.min(cw,ch)*0.34)*100,0,100);
+    if(aim.len>10){aim.ang=Math.atan2(dy,dx);aim.base=clamp(aim.len/(Math.min(cw,ch)*0.42)*POWMAX,0,POWMAX);
       // 손가락이 화면 끝에 닿았는데 더 당기고 싶을 때: 끝에서 누르고 있으면 힘이 계속 차오름
       const EG=16,atEdge=(dx<0&&e.clientX>cw-EG)||(dx>0&&e.clientX<EG)||(dy<0&&e.clientY>ch-EG)||(dy>0&&e.clientY<EG);
       if(atEdge&&aim.len>30){if(!aim.edge){aim.edge=true;aim.bonus=0}}else{aim.edge=false;aim.bonus=0}
-      aim.pow=clamp(aim.base+(aim.bonus||0),0,100);G.me.angle=aim.ang}return}
-  if(pan){const s=sc();cam.x=pan.cx-(e.clientX-pan.sx)/s;cam.y=pan.cy-(e.clientY-pan.sy)/s;G.panHold=3;clampCam()}});
+      aim.pow=clamp(aim.base+(aim.bonus||0),0,POWMAX);G.me.angle=aim.ang}return}
+  if(pan){const s=sc();cam.x=pan.cx-(e.clientX-pan.sx)/s;cam.y=pan.cy-(e.clientY-pan.sy)/s;G.panHold=3;if(Math.hypot(e.clientX-pan.sx,e.clientY-pan.sy)>12)G.camManual=true;clampCam()}});
 // 내 조준 차례: 내 탱크와 가장 가까운 적이 한 화면에 같이 보이도록 카메라 위치·확대를 정함 (당기는 동안에도 고정)
 function aimFrame(){const me=G.me;if(!me)return null;
   const foes=G.tanks.filter(o=>o!==me&&o.alive&&!(G.teamMode&&o.team===me.team));
@@ -1647,19 +1663,21 @@ function aimFrame(){const me=G.me;if(!me)return null;
   const z=clamp(Math.min(cw*0.92/((maxX-minX)*baseScale),ch*0.86/((maxY-minY)*baseScale)),zmin,1.05);
   return {x:(minX+maxX)/2,y:(minY+maxY)/2+ch*0.04/(baseScale*z),z}}
 // 📍 내 탱크 보기(잠깐 내 탱크로 부드럽게 이동) · 🎥 따라가기(차례가 바뀌어도 화면을 내 탱크에 둠)
-function focusMe(){if(!G||!G.me)return;G.panHold=0;G.focusT=3.5;if(mapView){cam.z=mapView.z;mapView=null;$('#bMap').textContent='🗺 전체 맵'}}
+function focusMe(){if(!G||!G.me)return;G.panHold=0;G.camManual=false;G.focusT=3.5;if(mapView){cam.z=mapView.z;mapView=null;$('#bMap').textContent='🗺 전체 맵'}}
 function toggleFollow(){if(!D)return;D.set.follow=!D.set.follow;saveNow();updateHud();toast(D.set.follow?'🎥 내 탱크 따라가기 켜짐 — 화면이 내 탱크에 머물러요':'🎥 따라가기 꺼짐 — 차례인 탱크를 보여 줘요',1800);if(D.set.follow)focusMe()}
 function camFollow(dt,tx,ty){const k=1-Math.pow(0.02,dt);
   if(G.focusT>0||(D&&D.set.follow&&!myAimTurn())){if(G.focusT>0)G.focusT-=dt;const m=G.me;if(m){const zt=Math.max(cam.z,0.85);cam.x+=(m.x-cam.x)*k;cam.y+=(m.y-120-cam.y)*k;if(G.focusT>0)cam.z+=(zt-cam.z)*Math.min(1,k);return}}
+  if(myAimTurn()&&G.camManual)return; // 직접 확대·이동한 화면은 당겨도 그대로
   if(myAimTurn()){const f=aimFrame();if(f){cam.x+=(f.x-cam.x)*k;cam.y+=(f.y-cam.y)*k;cam.z+=(f.z-cam.z)*Math.min(1,k*0.8);return}}
   cam.x+=(tx-cam.x)*k;cam.y+=(ty-cam.y)*k}
 $('#bFocus').onclick=()=>focusMe();$('#bFollow').onclick=()=>toggleFollow();
-function aimTick(dt){if(!aim||!aim.edge||aim.pow>=100)return;aim.bonus=(aim.bonus||0)+dt*60;aim.pow=clamp((aim.base||0)+aim.bonus,0,100)}
+const POWMAX=200; // 힘 최대 (100이면 넓은 맵 끝까지 못 감)
+function aimTick(dt){if(!aim||!aim.edge||aim.pow>=POWMAX)return;aim.bonus=(aim.bonus||0)+dt*90;aim.pow=clamp((aim.base||0)+aim.bonus,0,POWMAX)}
 function endPtr(e){ptrs.delete(e.pointerId);
   if(aim){const a=aim;aim=null;if(a.len>=24&&a.pow>=5&&myAimTurn())fire(G.me,a.ang,Math.round(a.pow),G.weapon);else if(a.len>4)toast('발사 취소')}
   if(ptrs.size<2)pinch=null;if(ptrs.size===0)pan=null}
 cv.addEventListener('pointerup',endPtr);cv.addEventListener('pointercancel',endPtr);
-cv.addEventListener('wheel',e=>{if(!G)return;e.preventDefault();cam.z*=1-clamp(e.deltaY,-100,100)*0.0015;G.panHold=3;clampCam()},{passive:false});
+cv.addEventListener('wheel',e=>{if(!G)return;e.preventDefault();cam.z*=1-clamp(e.deltaY,-100,100)*0.0015;G.panHold=3;G.camManual=true;clampCam()},{passive:false});
 // 이동 버튼 (누르고 있기)
 let moveDir=0;
 function holdBtn(el,dir){const on=e=>{e.preventDefault();ensureAudio();moveDir=dir;el.classList.add('on')};const off=()=>{if(moveDir===dir)moveDir=0;el.classList.remove('on')};
@@ -1718,6 +1736,15 @@ function updateMyStat(){const m=G&&G.me;if(!m)return;const hp=Math.max(0,Math.ro
   const st=$('#myStat');st.classList.toggle('low',m.alive&&r<=0.3);st.classList.toggle('dead',!m.alive);
   $('#bFollow').classList.toggle('on',!!(D&&D.set.follow));
   const roped=!!(m.rope&&myAimTurn());$('#bRU').classList.toggle('hidden',!roped);$('#bRD').classList.toggle('hidden',!roped);$('#bRopeOff').classList.toggle('hidden',!(G.ropeArm&&myAimTurn()));$('#bJump').textContent=roped?'끊기':'점프'}
+// 남은 시간 막대 (매 화면) + 내 차례 시작 알림
+let tbLastSec=-1,bannerT=0;
+function turnBarTick(){const bar=$('#turnBar');if(!bar)return;if(!G||!G.tanks||!G.cur||!['aim','sent'].includes(G.state)||!G.timerMax||G.timerMax>60){bar.classList.add('hidden');return}
+  const mine=G.cur===G.me&&G.me.alive;const left=Math.max(0,G.timer),r=Math.min(1,left/G.timerMax),sec=Math.ceil(left);
+  bar.classList.remove('hidden');bar.classList.toggle('mine',mine);bar.classList.toggle('low',mine&&left<=5);
+  $('#tbIn').style.width=(r*100)+'%';$('#tbIn').style.background=r>0.5?'#2ecc71':r>0.25?'#ffd43b':'#ff5a5f';
+  $('#tbLab').textContent=mine?`⏱ 내 차례 ${sec}초 · 이동·아이템 쓰고 발사!`:`⏱ ${G.cur.name} 차례 ${sec}초`;
+  if(mine&&left<=5&&sec!==tbLastSec&&sec>0)sfx('tick');tbLastSec=sec}
+function myTurnBanner(){const b=$('#turnBanner');if(!b)return;b.classList.add('on');sfx('myturn');clearTimeout(bannerT);bannerT=setTimeout(()=>b.classList.remove('on'),1500)}
 function updateHud(){if(!G||!G.tanks)return;updateMyStat();const mine=G.cur===G.me;
   $('#hRound').textContent=(G.teamMode?`팀전 ${G.teamWins[0]}:${G.teamWins[1]} · `:'')+`라운드 ${G.round}/${G.totalRounds} · ${G.cycle}바퀴`;
   const ht=$('#hTurn');ht.classList.toggle('mine',mine&&G.me.alive);
@@ -1879,13 +1906,13 @@ function render(){
   if(G&&aim&&aim.len>10){ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=3;ctx.setLineDash([4,6]);ctx.beginPath();ctx.moveTo(aim.sx,aim.sy);ctx.lineTo(aim.x,aim.y);ctx.stroke();ctx.setLineDash([]);
     ctx.fillStyle='rgba(255,255,255,.9)';ctx.beginPath();ctx.arc(aim.x,aim.y,9,0,7);ctx.fill();
     const ts=toScreen(G.me.x,G.me.y-60);let deg=Math.round(-aim.ang*180/Math.PI);if(deg<0)deg+=360;
-    const txt=`각도 ${deg}°  힘 ${Math.round(aim.pow)}`+(aim.edge&&aim.pow<100?'  ⏫ 충전 중':'');ctx.font='800 17px system-ui';ctx.textAlign='center';const w=ctx.measureText(txt).width+20;
+    const txt=`각도 ${deg}°  힘 ${Math.round(aim.pow)}`+(aim.edge&&aim.pow<POWMAX?'  ⏫ 충전 중':'');ctx.font='800 17px system-ui';ctx.textAlign='center';const w=ctx.measureText(txt).width+20;
     ctx.fillStyle='rgba(10,20,40,.8)';ctx.beginPath();ctx.roundRect(ts.x-w/2,ts.y-40,w,30,10);ctx.fill();ctx.fillStyle='#ffd43b';ctx.fillText(txt,ts.x,ts.y-19);
-    ctx.fillStyle='rgba(255,255,255,.2)';ctx.fillRect(ts.x-60,ts.y-6,120,7);ctx.fillStyle=aim.pow>85?'#ff5a5f':'#ffd43b';ctx.fillRect(ts.x-60,ts.y-6,120*aim.pow/100,7)}
+    ctx.fillStyle='rgba(255,255,255,.2)';ctx.fillRect(ts.x-60,ts.y-6,120,7);ctx.fillStyle=aim.pow>170?'#ff5a5f':aim.pow>100?'#ff9f43':'#ffd43b';ctx.fillRect(ts.x-60,ts.y-6,120*aim.pow/POWMAX,7)}
   if(G&&G.flash>0){ctx.fillStyle=`rgba(255,250,220,${Math.min(0.85,G.flash*1.4)})`;ctx.fillRect(0,0,cw,ch)}
   drawMini();drawOffscreen();
   // 컴퓨터 조준 힘 막대
-  if(G&&G.cur&&G.cur.isAI&&G.cur.showPow){const ts=toScreen(G.cur.x,G.cur.y-60);ctx.fillStyle='rgba(255,255,255,.2)';ctx.fillRect(ts.x-40,ts.y-6,80,6);ctx.fillStyle='#ffd43b';ctx.fillRect(ts.x-40,ts.y-6,80*G.cur.showPow/100,6)}
+  if(G&&G.cur&&G.cur.isAI&&G.cur.showPow){const ts=toScreen(G.cur.x,G.cur.y-60);ctx.fillStyle='rgba(255,255,255,.2)';ctx.fillRect(ts.x-40,ts.y-6,80,6);ctx.fillStyle='#ffd43b';ctx.fillRect(ts.x-40,ts.y-6,80*G.cur.showPow/POWMAX,6)}
 }
 
 /* =========================================================
@@ -1894,7 +1921,7 @@ function render(){
 let last=performance.now();
 function loop(now){
   const dt=Math.min(0.033,(now-last)/1000);last=now;
-  aimTick(dt);if(Math.floor(now/500)!==Math.floor((now-dt*1000)/500))musicUpdate();if(G&&G.me&&Math.floor(now/200)!==Math.floor((now-dt*1000)/200))updateMyStat();
+  aimTick(dt);turnBarTick();if(Math.floor(now/500)!==Math.floor((now-dt*1000)/500))musicUpdate();if(G&&G.me&&Math.floor(now/200)!==Math.floor((now-dt*1000)/200))updateMyStat();
   if(COACH&&G&&G.tanks&&!G.online){render();requestAnimationFrame(loop);return} // 안내 보는 동안 멈춤
   if(G&&G.online&&window.onlineStep){window.onlineStep(dt,now);render();requestAnimationFrame(loop);return}
   if(G&&G.tanks&&G.state!=='over'){
@@ -2803,12 +2830,12 @@ function makeSim(w, tanks, opts) {
     const humans = foes.filter(o => !o.isAI);
     let target = (humans.length && R() < 0.4) ? humans[Math.floor(R() * humans.length)] : foes.reduce((b, o) => Math.abs(o.x - t.x) < Math.abs(b.x - t.x) ? o : b, foes[0]);
     let best = { d: 1e9, a: -Math.PI / 4, pw: 60 };
-    for (let deg = 8; deg <= 172; deg += 4) { const a = -deg * Math.PI / 180; for (let pw = 22; pw <= 100; pw += 3) { const r = simulate(t, a, pw, S.wind, 6); if (r.out) continue; let d = Math.hypot(r.x - target.x, r.y - (target.y - 10)) + (r.hit === t ? 500 : 0) + (Math.hypot(r.x - t.x, r.y - t.y) < 70 ? 300 : 0); for (const mt of mates) if (Math.hypot(r.x - mt.x, r.y - (mt.y - 10)) < 70) d += 400; if (d < best.d) best = { d, a, pw }; } }
+    for (let deg = 8; deg <= 172; deg += 4) { const a = -deg * Math.PI / 180; for (let pw = 22; pw <= 200; pw += (pw < 100 ? 3 : 6)) { const r = simulate(t, a, pw, S.wind, 6); if (r.out) continue; let d = Math.hypot(r.x - target.x, r.y - (target.y - 10)) + (r.hit === t ? 500 : 0) + (Math.hypot(r.x - t.x, r.y - t.y) < 70 ? 300 : 0); for (const mt of mates) if (Math.hypot(r.x - mt.x, r.y - (mt.y - 10)) < 70) d += 400; if (d < best.d) best = { d, a, pw }; } }
     const noise = [[11, 6], [5, 2.6], [2, 1]][diff === undefined ? 1 : diff];
     let wpn = 'basic'; const ammo = t.ammo || {}; const opts2 = Object.keys(ammo).filter(k => ammo[k] > 0 && !WSTAT[k].dirt); const sup = opts2.filter(k => SUPER.includes(k));
     if (sup.length && R() < 0.5) wpn = sup[0]; else if (opts2.length && R() < 0.35) wpn = opts2[Math.floor(R() * opts2.length)];
     if (wpn !== 'basic') ammo[wpn]--;
-    return { a: best.a + rand(-noise[1], noise[1]) * Math.PI / 180, pw: clamp(best.pw + rand(-noise[0], noise[0]), 10, 100), w: wpn };
+    return { a: best.a + rand(-noise[1], noise[1]) * Math.PI / 180, pw: clamp(best.pw + rand(-noise[0], noise[0]) * (best.pw > 100 ? 1.6 : 1), 10, 200), w: wpn };
   };
   S.newWind = function () { S.wind = clamp((S.wind || 0) / WINDMAX * 0.4 + rand(-0.8, 0.8), -1, 1) * WINDMAX; return S.wind; };
   S.heal = HEAL;
@@ -3118,7 +3145,7 @@ function onRound(info){
   updateHud();
 }
 function onTurn(m){if(!G||!G.online)return;finishPlay();if(typeof wordTipNext==='function')wordTipNext();if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
-  const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
+  const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;G.timerMax=G.timer;G.camManual=false;if(m.i===BT.myI&&m.ms>0&&typeof myTurnBanner==='function')setTimeout(myTurnBanner,300);
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
   t.fuel=t.fuelMax;BT.fell=false;BT.posKey='';

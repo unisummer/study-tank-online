@@ -295,7 +295,7 @@ function onRound(info){
   updateHud();
 }
 function onTurn(m){if(!G||!G.online)return;finishPlay();if(typeof wordTipNext==='function')wordTipNext();if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
-  const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
+  const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;G.timerMax=G.timer;G.camManual=false;if(m.i===BT.myI&&m.ms>0&&typeof myTurnBanner==='function')setTimeout(myTurnBanner,300);
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
   t.fuel=t.fuelMax;BT.fell=false;BT.posKey='';

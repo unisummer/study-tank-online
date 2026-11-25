@@ -142,7 +142,7 @@ class Battle {
     const t = this.curOf(uid); if (!t) return;
     if (m.x !== undefined) { t.x = clamp(+m.x, 12, this.world.WW - 12); t.y = clamp(+m.y, 0, this.world.WH + 40); }
     const w = E.WSTAT[m.w] && !['mirvc', 'deathc', 'airb', 'napf', 'tri2', 'tri3'].includes(m.w) ? m.w : 'basic';
-    const ang = +m.a, pow = clamp(+m.pw || 50, 5, 100); if (!isFinite(ang)) return;
+    const ang = +m.a, pow = clamp(+m.pw || 50, 5, 200); if (!isFinite(ang)) return;
     this.doShot(t, ang, pow, w, { double: this.flags.double || !!m.dbl, warp: this.flags.warp || !!m.warp, secondW: m.w2 && E.WSTAT[m.w2] ? m.w2 : 'basic' });
   }
   onFell(uid) { const t = this.curOf(uid); if (!t) return; this.sim.ev = []; this.sim.t = 0; this.sim.gold = {}; this.sim.killTank(t, 'fall'); const ev = this.sim.ev; this.sim.ev = null; this.addGold(this.sim.gold); this.bc({ t: 'b_ev', ev }); this.state = 'resolve'; this.later(() => this.nextTurn(), 1200); }
