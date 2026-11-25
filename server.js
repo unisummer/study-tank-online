@@ -130,7 +130,7 @@ function bcChannel(ch, o, exceptRoom) { const s = JSON.stringify(o); for (const 
 function bcRoom(r, o) { const s = JSON.stringify(o); for (const [c, i] of conns) if (i.room === r.id) c.send(s); }
 function onlineList(ch) { const seen = new Map(); for (const i of conns.values()) if (ch === undefined || i.channel === ch) seen.set(i.uid, { name: i.name, room: i.room || null, channel: i.channel }); return [...seen.values()]; }
 const MAPS = ['random', 'hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
-const DATAS = ['phon', 'add1', 'add2', 'sub1', 'gugu', 'free'];
+const DATAS = ['phon', 'add1', 'add2', 'sub1', 'gugu', 'free', 'eng'];
 function roomView(r) {
   return { id: r.id, name: r.name, host: r.host, max: r.max, mode: r.mode, map: r.map, rounds: r.rounds, data: r.data, turn: r.turn, state: r.state,
     slots: r.slots.map(s => ({ uid: s.uid || 0, name: s.name, team: s.team, ready: !!s.ready, ai: !!s.ai, away: !!s.away, tier: s.ai && !s.uid ? null : tierLite(s.uid) })) };

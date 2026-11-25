@@ -89,6 +89,15 @@ textarea.inp{min-height:70px;resize:vertical}
 .qfoot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 .lockbar{height:4px;background:rgba(255,255,255,.1);border-radius:3px;margin-top:8px;overflow:hidden}
 .lockbar i{display:block;height:100%;background:#9cc3ff;width:0}
+#wordTip{position:absolute;top:58px;left:50%;transform:translateX(-50%);background:rgba(16,28,60,.88);border:2px solid #8fd3ff;border-radius:999px;padding:6px 16px;font-weight:800;font-size:15px;pointer-events:none!important;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+#wordTip small{color:#8fd3ff;font-weight:700;margin-left:6px}
+.vc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;margin-top:8px}
+.vc-item{background:rgba(255,255,255,.06);border-radius:10px;padding:7px 10px;font-size:14px;line-height:1.35}
+.vc-item b{font-size:15px}.vc-item .sub{font-size:12px}
+.vc-item.ok{background:rgba(46,204,113,.16)}.vc-item.ng{background:rgba(255,90,95,.16)}
+#vcCardBox{position:fixed;inset:0;background:rgba(5,10,25,.82);z-index:55;display:flex;align-items:center;justify-content:center;padding:16px}
+.vc-card{background:#18264a;border:3px solid #8fd3ff;border-radius:22px;padding:22px 20px;width:min(440px,94vw);text-align:center}
+.vc-w{font-size:40px;font-weight:900;margin:14px 0 8px;word-break:break-word}.vc-k{font-size:24px;font-weight:800;color:#ffd43b;min-height:34px}
 #toast{position:fixed;left:50%;top:18%;transform:translateX(-50%);background:rgba(10,20,40,.92);border:2px solid #ffd43b;border-radius:14px;padding:10px 16px;font-weight:800;z-index:60;pointer-events:none;text-align:center;max-width:90vw}
 #rotate{position:fixed;inset:0;background:#0f1b2d;z-index:80;display:none;align-items:center;justify-content:center;text-align:center;font-size:20px;padding:30px;line-height:1.6}
 @media (orientation:portrait) and (max-width:760px){body.battle #rotate{display:flex}}
@@ -144,6 +153,7 @@ table.res .n{text-align:right}
     </div>
   </div>
   <div id="hint"></div>
+  <div id="wordTip" class="hidden"></div>
   <div id="myStat">
     <div class="ms-row"><span class="ms-name" id="msName">나</span><span id="msBuff"></span></div>
     <div class="ms-bar"><div id="msHp"></div><span id="msHpTxt">100 / 100</span></div>
@@ -221,6 +231,7 @@ table.res .n{text-align:right}
     <div class="row" style="margin-top:18px"><button class="btn big green" id="bStart">전투 시작!</button></div>
     <div class="row" style="margin-top:14px">
       <button class="btn orange" id="bLobbyQuiz">📝 문제 풀고 골드 받기</button>
+      <button class="btn" id="bVocab" style="background:#2f7fe0">📘 고1 영단어</button>
       <button class="btn" id="bShop">🛒 상점</button>
       <button class="btn" id="bUpgrade">🔧 강화</button>
       <button class="btn" id="bMake">✏️ 문제 만들기</button>
@@ -287,6 +298,29 @@ table.res .n{text-align:right}
 </div>
 
 <!-- 라운드 결과 -->
+<div id="sVocab" class="screen hidden"><div class="wrap">
+  <div class="row" style="justify-content:space-between"><div><h1 style="font-size:28px">📘 고1 영단어</h1><div class="sub" id="vcSub"></div></div><button class="btn ghost" id="vcBack">← 돌아가기</button></div>
+  <div class="card" style="margin-top:10px">
+    <div class="row" style="justify-content:space-between"><b id="vcProg"></b><span class="sub" id="vcConf"></span></div>
+    <div class="bar" style="margin-top:8px"><i id="vcBar" style="width:0"></i></div>
+    <div class="sub" style="margin-top:6px;line-height:1.5">같은 단어를 3번 연속 맞히면 ✅ 외운 단어가 돼요. 틀린 단어는 ❗ 헷갈리는 단어로 모이고 문제에 더 자주 나와요.</div>
+  </div>
+  <h3>범위</h3><div class="chips" id="vcSets"></div><div class="chips" id="vcLv" style="margin-top:8px"></div>
+  <div class="row" style="margin-top:14px">
+    <button class="btn orange" id="vcQuiz">📝 영단어 문제 풀기</button>
+    <button class="btn" id="vcCard">🃏 카드로 외우기</button>
+    <button class="btn" id="vcWrong">❗ 헷갈리는 단어 다시</button>
+  </div>
+  <div class="row" style="margin-top:10px"><button class="btn ghost" id="vcUse"></button><button class="btn ghost" id="vcTip"></button></div>
+  <div class="sub" id="vcRule" style="margin-top:8px;line-height:1.5"></div>
+  <h3>단어 목록 <span class="sub" id="vcCount"></span></h3>
+  <div id="vcList" class="vc-list"></div>
+</div></div>
+<div id="vcCardBox" class="hidden"><div class="vc-card">
+  <div class="sub" id="vcCi"></div><div class="vc-w" id="vcCw"></div><div class="vc-k" id="vcCk"></div>
+  <div class="row" style="justify-content:center;margin-top:16px;gap:10px" id="vcCbtns"></div>
+  <button class="btn ghost" id="vcCclose" style="margin-top:14px">그만하기</button>
+</div></div>
 <div id="sRound" class="screen hidden">
   <div class="wrap" style="max-width:620px">
     <h2 id="rdTitle">라운드 결과</h2>
@@ -366,7 +400,7 @@ const DEFAULT_DATA=()=>({gold:300,honor:0,up:{barrel:0,armor:0,engine:0},
   items:{repairS:1,repair:0,repairL:0,scope:1,double:0,shield:0,chute:1,tele:0,warp:1,spider:1,rope:2},
   stats:{games:0,wins:0,beat:0,kills:0,qRight:0,qTotal:0,made:0},
   qDay:'',qToday:0,madeDay:'',madeToday:0,
-  set:{anywhere:false,sound:true,music:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4}});
+  set:{anywhere:false,sound:true,music:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4,engSets:'all',engLv:0,wordTip:true},vocab:{}});
 function merge(base,o){for(const k in o){const v=o[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&base[k]&&typeof base[k]==='object')merge(base[k],v);else base[k]=v}return base}
 let profiles=LS.get('gt_profiles',{});
 let me=null, D=null;
@@ -444,6 +478,33 @@ const PHON=[
  {q:'음운의 변동은 표기에도 항상 반영된다.',c:['O','X'],a:1,lv:1,e:'틀렸어요. 국물[궁물]처럼 대부분은 발음에만 나타나요. ‘우는, 써’처럼 표기에 반영되는 경우도 일부 있어요.'}
 ].map((o,i)=>Object.assign({id:'phon-'+i,src:'음운의 변동'},o));
 
+
+/* ---------- 고1 영단어 (선생님이 준 목록 SET 1~10 · 하/중/상) ---------- */
+const VOCAB_RAW=[["affect","영향을 미치다",1,1],["avoid","피하다",1,1],["benefit","이익, 혜택",1,1],["cause","원인; 일으키다",1,1],["common","흔한, 공통의",1,1],["compare","비교하다",1,1],["complete","완성하다",1,1],["create","만들다",1,1],["develop","발달시키다, 개발하다",1,1],["effort","노력",1,1],["environment","환경",1,1],["experience","경험",1,1],["explain","설명하다",1,1],["familiar","익숙한",1,1],["improve","향상시키다",1,1],["increase","증가하다",1,1],["instead","대신에",1,1],["involve","포함하다",1,1],["likely","~할 것 같은",1,1],["natural","자연의, 자연스러운",1,1],["ordinary","평범한",1,1],["prevent","막다, 예방하다",1,1],["provide","제공하다",1,1],["reduce","줄이다",1,1],["require","요구하다",1,1],["result","결과",1,1],["similar","비슷한",1,1],["suggest","제안하다, 암시하다",1,1],["support","지지하다",1,1],["useful","유용한",1,1],["acquire","습득하다",1,2],["adapt","적응하다",1,2],["consume","소비하다",1,2],["contribute","기여하다",1,2],["demonstrate","입증하다",1,2],["emerge","나타나다",1,2],["establish","설립하다, 확립하다",1,2],["estimate","추정하다",1,2],["maintain","유지하다",1,2],["occur","발생하다",1,2],["participate","참여하다",1,2],["perceive","인식하다",1,2],["pursue","추구하다",1,2],["recover","회복하다",1,2],["significant","중요한, 상당한",1,2],["alter","바꾸다",1,2],["apparent","명백한",1,2],["appropriate","적절한",1,2],["circumstance","상황",1,2],["consequence","결과",1,2],["distinguish","구별하다",1,2],["emphasize","강조하다",1,2],["expand","확대하다",1,2],["essential","필수적인",1,2],["indicate","나타내다",1,2],["obtain","얻다",1,2],["respond","대응하다",1,2],["retain","유지하다",1,2],["tendency","경향",1,2],["widespread","널리 퍼진",1,2],["ambiguous","모호한",1,3],["anticipate","예상하다",1,3],["coherent","일관성 있는",1,3],["conventional","전통적인",1,3],["deteriorate","악화되다",1,3],["diminish","감소하다",1,3],["empirical","경험적인",1,3],["inevitable","불가피한",1,3],["manipulate","조작하다",1,3],["undermine","약화시키다",1,3],["reinforce","강화하다",1,3],["skeptical","회의적인",1,3],["subordinate","종속된",1,3],["arbitrary","임의적인",1,3],["compelling","설득력 있는",1,3],["contradict","모순되다",1,3],["facilitate","촉진하다",1,3],["fundamental","근본적인",1,3],["inherent","내재된",1,3],["inclination","경향",1,3],["invoke","불러일으키다",1,3],["marginal","주변적인, 미미한",1,3],["objective","객관적인",1,3],["prevalent","널리 퍼진",1,3],["rational","합리적인",1,3],["reconcile","조화시키다",1,3],["sophisticated","정교한",1,3],["subtle","미묘한",1,3],["underlying","근본적인, 밑에 깔린",1,3],["vulnerable","취약한",1,3],["accept","받아들이다",2,1],["achieve","성취하다",2,1],["allow","허락하다",2,1],["appear","나타나다",2,1],["basic","기본적인",2,1],["believe","믿다",2,1],["choice","선택",2,1],["consume","소비하다. 먹다",2,1],["consider","고려하다",2,1],["decide","결정하다",2,1],["describe","묘사하다",2,1],["difference","차이",2,1],["difficult","어려운",2,1],["discover","발견하다",2,1],["education","교육",2,1],["example","예",2,1],["fact","사실",2,1],["feature","특징",2,1],["focus","집중하다",2,1],["general","일반적인",2,1],["happen","발생하다",2,1],["important","중요한",2,1],["knowledge","지식",2,1],["local","지역의",2,1],["possible","가능한",2,1],["purpose","목적",2,1],["reason","이유",2,1],["remember","기억하다",2,1],["simple","단순한",2,1],["value","가치",2,1],["accurate","정확한",2,2],["analyze","분석하다",2,2],["approach","접근하다",2,2],["capacity","능력, 수용력",2,2],["complex","복잡한",2,2],["conduct","수행하다",2,2],["confirm","확인하다",2,2],["decline","감소하다, 거절하다",2,2],["define","정의하다",2,2],["determine","결정하다",2,2],["efficient","효율적인",2,2],["enable","가능하게 하다",2,2],["eventually","결국",2,2],["factor","요인",2,2],["function","기능",2,2],["identify","확인하다",2,2],["imply","암시하다",2,2],["influence","영향",2,2],["interpret","해석하다",2,2],["involve","수반하다",2,2],["issue","문제, 쟁점",2,2],["modify","수정하다",2,2],["occupy","차지하다",2,2],["predict","예측하다",2,2],["principle","원칙",2,2],["proportion","비율",2,2],["reveal","드러내다",2,2],["select","선택하다",2,2],["specific","구체적인",2,2],["transmit","전달하다",2,2],["alleviate","완화하다",2,3],["apparent","명백한",2,3],["assess","평가하다",2,3],["cease","중단하다",2,3],["coincide","일치하다",2,3],["comprise","구성하다",2,3],["constrain","제한하다",2,3],["controversial","논란이 되는",2,3],["counterpart","상대방, 대응물",2,3],["deficient","부족한",2,3],["discrete","별개의",2,3],["elaborate","정교한; 상세히 설명하다",2,3],["exceed","초과하다",2,3],["exploit","이용하다",2,3],["implicit","암묵적인",2,3],["induce","유발하다",2,3],["justify","정당화하다",2,3],["nonetheless","그럼에도불구하고",2,3],["obscure","불분명하게 하다",2,3],["persistent","지속적인",2,3],["preliminary","예비의",2,3],["predominant","지배적인",2,3],["reciprocal","상호적인",2,3],["refine","개선하다",2,3],["restrain","억제하다",2,3],["simultaneous","동시에일어나는",2,3],["transparent","투명한",2,3],["trigger","촉발하다",2,3],["undermine","약화시키다",2,3],["verify","입증하다",2,3],["ability","능력",3,1],["active","활동적인",3,1],["attention","주의",3,1],["change","변화",3,1],["clear","명확한",3,1],["culture","문화",3,1],["derive","끌어내다",3,1],["enjoy","즐기다",3,1],["especially","특히",3,1],["event","사건",3,1],["follow","따르다",3,1],["grow","성장하다",3,1],["habit","습관",3,1],["health","건강",3,1],["human","인간",3,1],["idea","생각",3,1],["information","정보",3,1],["lead","이끌다",3,1],["learn","배우다",3,1],["matter","문제, 중요하다",3,1],["memory","기억",3,1],["nature","자연",3,1],["opportunity","기회",3,1],["organize","조직하다",3,1],["practice","연습",3,1],["prepare","준비하다",3,1],["protect","보호하다",3,1],["relationship","관계",3,1],["society","사회",3,1],["traditional","전통적인",3,1],["adequate","충분한",3,2],["attribute","~탓으로 돌리다",3,2],["acquire","습득하다",3,2],["challenge","도전",3,2],["collaborate","협력하다",3,2],["compensate","보상하다",3,2],["concentrate","집중하다",3,2],["crucial","결정적인",3,2],["derive","끌어내다",3,2],["enhance","향상시키다",3,2],["expose","노출시키다",3,2],["flexible","유연한",3,2],["generate","발생시키다",3,2],["impact","영향",3,2],["incorporate","포함시키다",3,2],["justify","정당화하다",3,2],["objective","목표, 객관적인",3,2],["perceive","인식하다",3,2],["precise","정확한",3,2],["promote","촉진하다",3,2],["regulate","규제하다",3,2],["reliable","믿을 만한",3,2],["remarkable","주목할 만한",3,2],["restrict","제한하다",3,2],["sustain","유지하다",3,2],["transform","변화시키다",3,2],["unique","독특한",3,2],["valid","타당한",3,2],["whereas","~인 반면에",3,2],["widespread","널리 퍼진",3,2],["accumulate","축적하다",3,3],["autonomous","자율적인",3,3],["cease","중단하다",3,3],["cognition","인지",3,3],["constitute","구성하다",3,3],["deceptive","기만적인",3,3],["facilitate","촉진하다",3,3],["inherent","내재된",3,3],["intricate","복잡한",3,3],["intuitive","직관적인",3,3],["marginal","미미한",3,3],["mitigate","완화하다",3,3],["notion","개념",3,3],["paradox","역설",3,3],["plausible","그럴듯한",3,3],["prerequisite","전제 조건",3,3],["profound","심오한",3,3],["reluctant","꺼리는",3,3],["rigid","엄격한",3,3],["spontaneous","자발적인",3,3],["tentative","잠정적인",3,3],["tolerate","용인하다",3,3],["unprecedented","전례없는",3,3],["versatile","다재다능한",3,3],["viable","실행 가능한",3,3],["arbitrary","임의적인",3,3],["bias","편견",3,3],["conventional","전통적인",3,3],["discrete","별개의",3,3],["empirical","경험적인",3,3],["advice","조언",4,1],["agree","동의하다",4,1],["adapt","적응하다",4,1],["become","~이 되다",4,1],["behavior","행동",4,1],["believe","믿다",4,1],["build","짓다",4,1],["carry","운반하다",4,1],["cause","원인",4,1],["community","공동체",4,1],["control","통제하다",4,1],["danger","위험",4,1],["depend","의존하다",4,1],["distribute","분배하다",4,1],["enough","충분한",4,1],["expand","확대하다",4,1],["future","미래",4,1],["impact","영향",4,1],["illustrate","설명하다, 예를 들다",4,1],["individual","개인",4,1],["language","언어",4,1],["necessary","필요한",4,1],["problem","문제",4,1],["process","과정",4,1],["perceive","인식하다",4,1],["preserve","보존하다",4,1],["quality","질",4,1],["recognize","인식하다",4,1],["share","공유하다",4,1],["source","원천",4,1],["adapt","적응하다",4,2],["assign","할당하다",4,2],["clarify","명확하게 하다",4,2],["conflict","갈등",4,2],["consume","소비하다",4,2],["convert","전환하다",4,2],["distinguish","구별하다",4,2],["distribute","분배하다",4,2],["eliminate","제거하다",4,2],["emphasize","강조하다",4,2],["encounter","마주치다",4,2],["equivalent","동등한",4,2],["evaluate","평가하다",4,2],["expand","확대하다",4,2],["guarantee","보장하다",4,2],["illustrate","설명하다, 예를 들다",4,2],["impose","부과하다",4,2],["maintain","유지하다",4,2],["obtain","얻다",4,2],["participate","참여하다",4,2],["perceive","인식하다",4,2],["preserve","보존하다",4,2],["pursue","추구하다",4,2],["react","반응하다",4,2],["recover","회복하다",4,2],["sufficient","충분한",4,2],["tendency","경향",4,2],["vary","다양하다",4,2],["sophisticated","정교한",4,2],["withdraw","철회하다",4,2],["adverse","불리한",4,3],["advocate","옹호하다",4,3],["aggregate","총합의",4,3],["compatible","양립가능한",4,3],["compelling","설득력 있는",4,3],["contradict","모순되다",4,3],["detrimental","해로운",4,3],["discriminate","차별하다, 구별하다",4,3],["facilitate","용이하게 하다",4,3],["feasible","실행 가능한",4,3],["formulate","공식화하다",4,3],["fascination","매료됨",4,3],["inhibit","억제하다",4,3],["indispensable","필수적인",4,3],["manipulate","조작하다",4,3],["nevertheless","그럼에도불구하고",4,3],["persistent","지속적인",4,3],["reinforce","강화하다",4,3],["reluctant","꺼리는",4,3],["resilient","회복력 있는",4,3],["retain","유지하다",4,3],["rigid","엄격한",4,3],["skeptical","회의적인",4,3],["subordinate","종속된",4,3],["subsequent","그 다음의",4,3],["suppress","억압하다",4,3],["transcend","초월하다",4,3],["undermine","약화시키다",4,3],["vulnerable","취약한",4,3],["widespread","널리 퍼진",4,3],["amount","양",5,1],["area","지역",5,1],["available","이용 가능한",5,1],["average","평균",5,1],["behave","행동하다",5,1],["careful","주의 깊은",5,1],["center","중심",5,1],["certain","확실한",5,1],["commit","저지르다, 전념하다",5,1],["choice","선택",5,1],["condition","상태",5,1],["difference","차이",5,1],["direct","직접적인",5,1],["effect","효과",5,1],["experience","경험",5,1],["flexible","유연한",5,1],["group","집단",5,1],["happen","일어나다",5,1],["include","포함하다",5,1],["limit","제한하다",5,1],["method","방법",5,1],["rational","합리적인",5,1],["remain","남아 있다",5,1],["resolve","해결하다",5,1],["rule","규칙",5,1],["sense","감각, 의미",5,1],["situation","상황",5,1],["special","특별한",5,1],["thought","생각",5,1],["use","사용하다",5,1],["alternative","대안",5,2],["apparent","명백한",5,2],["attain","달성하다",5,2],["cease","그만두다",5,2],["circumstance","상황",5,2],["commit","저지르다, 전념하다",5,2],["constrain","제한하다",5,2],["comprise","구성하다",5,2],["distort","왜곡하다",5,2],["demonstrate","입증하다",5,2],["detect","발견하다",5,2],["expectation","기대",5,2],["exceed","초과하다",5,2],["fundamental","근본적인",5,2],["generate","만들어 내다",5,2],["implement","시행하다",5,2],["inevitable","불가피한",5,2],["interpret","해석하다",5,2],["modify","수정하다",5,2],["obtain","획득하다",5,2],["predict","예측하다",5,2],["principle","원칙",5,2],["proportion","비율",5,2],["rational","합리적인",5,2],["resolve","해결하다",5,2],["retain","유지하다",5,2],["significant","중요한",5,2],["substitute","대체하다",5,2],["transform","변화시키다",5,2],["vanish","사라지다",5,2],["manuscript","원고",5,3],["thoroughly","철저하게",5,3],["incorporate","포함하다, 통합하다",5,3],["complaint","불평,불만",5,3],["compensation","보상",5,3],["enthusiastic","열정적인",5,3],["property","재산, 소유물",5,3],["assistance","도움, 원조",5,3],["ridiculous","말도 안되는",5,3],["commute","통근",5,3],["soaked","흠뻑 젖은",5,3],["scent","향기",5,3],["inject","주입하다",5,3],["manipulation","조작",5,3],["vehicle","탈것, 매개체",5,3],["controversial","논쟁의 여지가 있는, 논란이 많은",5,3],["assumption","가정, 추정",5,3],["sequence","순서, 차례",5,3],["concentrate","집중하다.농축시키다",5,3],["flourish","번영하다,",5,3],["accountable","책임있는",5,3],["disruption","혼란",5,3],["awkwardness","어색함",5,3],["empathy","공감",5,3],["resolve","해결하다",5,3],["compassion","연민",5,3],["overwhelming","압도적인",5,3],["reputable","평판이 좋은",5,3],["embrace","받아들이다",5,3],["access","접근하다",6,2],["accomplish","성취하다",6,2],["alleviate","완화하다",6,2],["attribute","~의 탓으로 돌리다, 특성",6,2],["capacity","능력",6,2],["crucial","중요한",6,2],["derive","얻다",6,2],["efficient","효율적인",6,2],["exploit","이용하다",6,2],["emerge","생겨나다 , 나타나다",6,2],["facilitate","촉진하다",6,2],["identify","식별하다",6,2],["inevitable","불가피한",6,2],["justify","정당화하다",6,2],["mechanism","메커니즘",6,2],["objection","반대, 반론",6,2],["primary","중요한, 주요한",6,2],["premise","전제",6,2],["proposition","제안, 명제",6,2],["rational","합리적인",6,2],["recognition","인지, 인식",6,2],["restrict","제한하다",6,2],["retain","유지하다",6,2],["stimulate","자극하다",6,2],["suppress","억제하다",6,2],["subordinate","종속적인",6,2],["unique","독특한",6,2],["vulnerable","취약한",6,2],["voluntary","자발적인",6,2],["widespread","널리 퍼진",6,2],["abstract","추상적인",6,3],["arbitrary","임의적인",6,3],["coherent","일관성 있는",6,3],["comprehensive","포괄적인",6,3],["reflection","성찰",6,3],["inclination","경향",6,3],["deceptive","기만적인",6,3],["alternative","대안",6,3],["elaborate","정교한",6,3],["facilitate","촉진하다",6,3],["formidable","막강한, 만만치 않은",6,3],["populate","살다, 거주하다",6,3],["innate","타고난",6,3],["inevitable","불가피한",6,3],["dismiss","일축하다",6,3],["negotiate","협상하다",6,3],["component","구성요소",6,3],["disincentive","의욕을꺽는 것",6,3],["entail","수반하다",6,3],["resilient","회복력 있는",6,3],["suspension","유예,보류",6,3],["groundbreaking","획기적인",6,3],["accommodation","숙소",6,3],["suppress","억제하다",6,3],["temperate","온화한",6,3],["unprecedented","전례없는",6,3],["versatile","다재다능한",6,3],["outnumber","숫자가 더많다",6,3],["yield","산출하다, 양보하다",6,3],["acquire","습득하다",7,2],["ambiguous","모호한",7,2],["analyse","분석하다",7,2],["competence","능력",7,2],["component","요소, 성분",7,2],["contemplate","고려하다",7,2],["contraction","수축",7,2],["discrimination","차별",7,2],["devalue","평가절하하다",7,2],["distinct","별개의",7,2],["explosion","폭발, 증가",7,2],["evolutionary","진화의",7,2],["eternal","영원한",7,2],["encompass","포함하다",7,2],["implication","함축, 암시",7,2],["indicate","나타내다",7,2],["maintain","유지하다",7,2],["participate","참여하다",7,2],["potential","잠재적인",7,2],["phenomenon","현상",7,2],["react","반응하다",7,2],["recover","회복하다",7,2],["reveal","드러내다",7,2],["reciprocity","상호 이익",7,2],["stubborn","완고한, 다루기 어려운",7,2],["stable","안정적인",7,2],["significant","중요한",7,2],["speculation","추측",7,2],["virtue","미덕",7,2],["visibility","가시성",7,2],["distinguished","저명한",7,3],["conduct","수행하다",7,3],["affordable","저렴하게 구할 수 있는",7,3],["committed","전념하는",7,3],["separate","별개의,분리된",7,3],["accompany","동반하다",7,3],["assign","맡기다, 할당하다",7,3],["detrimental","해로운",7,3],["distort","왜곡하다",7,3],["conventional","전통적인",7,3],["retailer","소매업체",7,3],["formulate","공식화하다",7,3],["implicit","암묵적인",7,3],["variation","변이, 차이",7,3],["overlook","간과하다",7,3],["legitimate","정당한",7,3],["mitigate","완화하다",7,3],["coincidence","우연",7,3],["distortion","왜곡",7,3],["consistently","일관되게",7,3],["outrage","분노",7,3],["embody","구현하다, 나타내다",7,3],["disposable","일회용의",7,3],["reluctant","꺼리는",7,3],["arrangement","배열",7,3],["spontaneous","자발적인",7,3],["faculty","능력",7,3],["conviction","확신",7,3],["consensus","협의, 일치",7,3],["emerge","나타나다",7,3],["anticipate","예상하다",8,2],["absolutely","절대적으로",8,2],["alien","낯선, 이질적인",8,2],["abuse","학대하다",8,2],["continuous","연속적인",8,2],["constrained","제한된",8,2],["cultivate","기르다, 함양하다",8,2],["disciplinary","훈련",8,2],["dissolve","분해해다",8,2],["detach","떼어내다",8,2],["distinctive","구별되는",8,2],["endurance","지구력, 인내심",8,2],["exploit","활용하다",8,2],["extract","추출하다",8,2],["ensure","보장하다",8,2],["exclusively","배타적인, 오로지",8,2],["flexibility","유연성",8,2],["manipulate","조작하다",8,2],["overlook","간과하다",8,2],["persistence","끈기, 지속",8,2],["privileging","특권화",8,2],["prospect","가능성",8,2],["relatively","상대적으로",8,2],["relevant","유의미한, 연관된",8,2],["reproduction","재생산, 번식",8,2],["substitute","대체하다",8,2],["sustain","유지하다",8,2],["specific","구체적인",8,2],["valid","타당한",8,2],["widespread","널리 퍼진",8,2],["aggressive","공격적인",8,3],["unconscious","무의식적인",8,3],["application","적용, 원리",8,3],["grasp","이해하다",8,3],["monumental","거대한",8,3],["elaborate","정교한",8,3],["maintenance","유지",8,3],["illegitimate","정당화하다",8,3],["existence","존재",8,3],["abundant","풍부한",8,3],["privileged","기밀의, 특권이 있는",8,3],["exceptional","예외적인",8,3],["intricate","복잡한",8,3],["authenticity","진정성",8,3],["ethical","윤리적인",8,3],["obscure","모호하게 하다",8,3],["intake","섭취",8,3],["intimate","밀접한, 친밀한",8,3],["contemplative","관조적인",8,3],["chronic","만성적인",8,3],["proportion","비율",8,3],["skeptical","회의적인",8,3],["subordinate","종속적인",8,3],["successive","연속적인",8,3],["accustomed","익숙한",8,3],["transcend","초월하다",8,3],["incorporate","포함함다",8,3],["descendent","후대의",8,3],["excessive","과도한 지나친",8,3],["vanish","사라지다, 소멸하다",8,3],["attainment","도달, 달성",9,3],["discipline","(학문) 분야",9,3],["impulsive","충동적인",9,3],["instantaneous","즉각적인",9,3],["scattered","산재해 있는",9,3],["elaborate","정교한",9,3],["extract","추출하다",9,3],["discern","분간하다",9,3],["maturity","성숙도",9,3],["administrative","관리의, 행정상의",9,3],["confusion","혼란",9,3],["authoritative","권위있는",9,3],["coverage","취급범위",9,3],["spontaneously","자발적으로",9,3],["irrational","비이성적인",9,3],["spatial","공간의",9,3],["spectator","관람객",9,3],["execution","실행, 수행",9,3],["commit to","~에 전념하다",9,3],["induce","유도하다",9,3],["discomfort","불편함",9,3],["sustainable","지속가능한",9,3],["permanent","영구적인",9,3],["durable","오래 지속되는",9,3],["insufficient","불충분한",9,3],["integrated","통합된",9,3],["flourish","번성하다",9,3],["biodiversity","생물다양성",9,3],["adverse","부정적인, 불리한",9,3],["adversity","역경",9,3],["aggressive","공격적",10,3],["align","조정하다",10,3],["analogous","유사한",10,3],["humiliate","굴욕을 주다",10,3],["integral","필수적인",10,3],["intimate","친밀한",10,3],["vulnerable","취약한",10,3],["irrelevant","무의미한",10,3],["submit","제출하다",10,3],["disposal","처리",10,3],["exclusively","오로지",10,3],["distracted","산만해진",10,3],["abundance","풍요로움",10,3],["contemporary","동시대의",10,3],["invisibility","불가시성의",10,3],["contract","계약, 약정",10,3],["reflective","반사하는",10,3],["outright","노골적으로",10,3],["statistical","통계적인",10,3],["degradation","퇴화, 저하",10,3],["anticipation","예상",10,3],["disruptive","파괴적인",10,3],["diminish","축소하다",10,3],["stationary","정지해 있는",10,3],["emerge","출현하다",10,3],["complement","보완하다",10,3],["conversely","반대로",10,3],["disrupt","방해하다",5,3],["reflective","반사적인, 반영하는",6,3],["tendency","경향, 성향",6,3],["polish","닦다",5,3],["at the expense of","~을 희생하여",6,3],["be subjected to","~ 영향받기 쉬운",10,3],["transformative","변혁적인, 변화시키는",10,3],["determined","단단히 결심한",10,3]];
+const VW=(()=>{const m=new Map();for(const [w,k,st,lv] of VOCAB_RAW){const key=w.toLowerCase();let v=m.get(key);
+  if(!v){v={w,k,sets:[st],lv,ks:[k]};m.set(key,v)}else{if(!v.sets.includes(st))v.sets.push(st);if(!v.ks.includes(k))v.ks.push(k);if(k.length>v.k.length&&!k.includes(v.k))v.k=v.k+', '+k;else if(k.length>v.k.length)v.k=k}}
+  const out=[...m.values()];for(const v of out){const parts=[];for(const k of v.ks)for(let t of k.replace('포함함다','포함하다').split(/[,;]|\.\s*/)){t=t.trim();if(t&&!parts.some(p=>p.replace(/\s/g,'')===t.replace(/\s/g,'')))parts.push(t)}v.k=parts.join(', ')||v.k;v.tok=vocabTokens(v.ks.join(','))}return out})();
+function vocabTokens(k){return k.replace(/\(.*?\)/g,'').split(/[,;·/.]/).map(x=>x.replace(/[~\s]/g,'')).filter(x=>x.length>0)}
+const VLV=['','하','중','상'];
+function vst(w){D.vocab=D.vocab||{};return D.vocab[w]||(D.vocab[w]={r:0,x:0,s:0})}
+function vMastered(w){const s=D.vocab&&D.vocab[w];return !!s&&s.s>=3}
+function vConfused(w){const s=D.vocab&&D.vocab[w];return !!s&&s.x>0&&s.s<2}
+function vocabMark(w,ok){const s=vst(w);if(ok){s.r++;s.s++}else{s.x++;s.s=0}s.t=Date.now()}
+function vocabPool(){const st=D.set.engSets===undefined?'all':D.set.engSets,lv=+D.set.engLv||0;
+  return VW.filter(v=>(st==='all'||v.sets.includes(+st))&&(!lv||v.lv===lv))}
+let vRecent=[];
+function vocabPick(pool){if(!pool.length)return null;const fresh=pool.filter(v=>!vRecent.includes(v.w));const P=fresh.length?fresh:pool;
+  const wt=P.map(v=>{const s=D.vocab&&D.vocab[v.w];if(!s||(!s.r&&!s.x))return 3;if(s.x>0&&s.s<2)return 5;if(s.s>=3)return 0.4;return 1.5});
+  let sum=wt.reduce((a,b)=>a+b,0),x=Math.random()*sum;let pick=P[P.length-1];for(let i=0;i<P.length;i++){x-=wt[i];if(x<=0){pick=P[i];break}}
+  vRecent.push(pick.w);if(vRecent.length>12)vRecent.shift();return pick}
+// 보기: 같은 목록(523단어) 안에서만, 같은 난이도를 먼저, 뜻이 겹치는 단어는 빼기
+function vocabWrong(v,n){const ok=o=>o!==v&&!o.tok.some(t=>v.tok.includes(t));
+  const same=shuffle(VW.filter(o=>o.lv===v.lv&&ok(o))),rest=shuffle(VW.filter(o=>o.lv!==v.lv&&ok(o)));const out=[];
+  for(const o of same.concat(rest)){if(out.length>=n)break;if(out.some(q=>q.tok.some(t=>o.tok.includes(t))))continue;out.push(o)}return out}
+function engQuestion(onlyWrong){let pool=onlyWrong?VW.filter(v=>vConfused(v.w)):vocabPool();if(!pool.length)pool=vocabPool();if(!pool.length)pool=VW;
+  const v=vocabPick(pool);const wr=vocabWrong(v,3);const opts=shuffle([v].concat(wr));const e2k=Math.random()<0.5;
+  return{id:null,q:e2k?`‘${v.w}’의 뜻으로 알맞은 것은?`:`‘${v.k}’의 뜻을 가진 영어 단어는?`,c:opts.map(o=>e2k?o.k:o.w),a:opts.indexOf(v),lv:v.lv,
+    e:`${v.w} — ${v.k}  (SET ${v.sets.join('·')} · ${VLV[v.lv]})`,src:'고1 영단어',vw:v.w}}
 function numChoices(ans,spread){const s=new Set([ans]);let n=0;while(s.size<4&&n<60){n++;const v=ans+Math.round(rand(-spread,spread));if(v>=0&&v!==ans)s.add(v)}let k=1;while(s.size<4)s.add(ans+spread+k++);const arr=shuffle([...s]);return{c:arr.map(String),a:arr.indexOf(ans)}}
 const DATASETS={
  phon:{name:'음운의 변동',who:'고등 국어 수업',lock:1500,teacherCount:()=>PHON.length,next(){return pickFixed('phon',PHON)}},
@@ -451,7 +512,8 @@ const DATASETS={
  add2:{name:'덧셈 (두 자리)',who:'초등 2학년',lock:800,next(){const a=10+Math.floor(Math.random()*80),b=1+Math.floor(Math.random()*(99-a));const r=numChoices(a+b,10);return{id:null,q:`${a} + ${b} = ?`,c:r.c,a:r.a,lv:2,e:`${a} + ${b} = ${a+b}. 일의 자리끼리, 십의 자리끼리 더해요.`,src:'덧셈'}}},
  sub1:{name:'뺄셈 (20까지)',who:'초등 1학년',lock:600,next(){const a=2+Math.floor(Math.random()*18),b=1+Math.floor(Math.random()*(a-1));const r=numChoices(a-b,3);return{id:null,q:`${a} − ${b} = ?`,c:r.c,a:r.a,lv:1,e:`${a}에서 ${b}를 빼면 ${a-b}예요.`,src:'뺄셈'}}},
  gugu:{name:'구구단',who:'초등 2학년',lock:600,next(){const g=D.set.gugu==='all'?2+Math.floor(Math.random()*8):+D.set.gugu;const b=1+Math.floor(Math.random()*9);const r=numChoices(g*b,Math.max(4,g));return{id:null,q:`${g} × ${b} = ?`,c:r.c,a:r.a,lv:g>=6?2:1,e:`${g}단: ${g} × ${b} = ${g*b}`,src:g+'단'}}},
- free:{name:'자유 문제',who:'학생이 만든 문제만',lock:1500,teacherCount:()=>0,next(){return null}}
+ free:{name:'자유 문제',who:'학생이 만든 문제만',lock:1500,teacherCount:()=>0,next(){return null}},
+ eng:{name:'고1 영단어',who:'고등 1학년 · '+VW.length+'단어',lock:700,teacherCount:()=>Infinity,reward:{1:15,2:20,3:25},next(){return engQuestion(QZ&&QZ.onlyWrong)}}
 };
 ['add1','add2','sub1','gugu'].forEach(k=>DATASETS[k].teacherCount=()=>Infinity);
 const queues={};
@@ -498,13 +560,14 @@ const QCAP=BAL.quizDailyCap;
 let QZ=null;
 function openQuiz(opts){
   // opts: {title, goal (n개 맞히면 onDone), earn(bool)}
-  if(!nextQuestionFrom(D.set.data)){toast(`「${DATASETS[D.set.data].name}」에 풀 문제가 아직 없어요. 음운의 변동 문제로 할게요.`,2600);D.set.data='phon';saveNow()}
+  const qkey=opts&&opts.data||D.set.data;
+  if(!nextQuestionFrom(qkey)&&qkey===D.set.data){toast(`「${DATASETS[D.set.data].name}」에 풀 문제가 아직 없어요. 음운의 변동 문제로 할게요.`,2600);D.set.data='phon';saveNow()}
   QZ=Object.assign({title:'문제 풀기',goal:0,earn:true,right:0,onDone:null},opts);
   $('#qTitle').textContent=QZ.title;$('#quiz').classList.remove('hidden');nextQ()}
 function closeQuiz(){$('#quiz').classList.add('hidden');const q=QZ;QZ=null;if(q&&q.onClose)q.onClose(q.right>=q.goal&&q.goal>0)}
 function quizProgText(){if(QZ.goal)return `맞힌 문제 ${QZ.right} / ${QZ.goal}`;if(D.qDay!==today()){D.qDay=today();D.qToday=0}return `오늘 문제 골드 ${D.qToday} / ${QCAP}G`}
 function nextQ(){
-  const ds=DATASETS[D.set.data];const q=nextQuestionFrom(D.set.data);if(!q){toast('풀 문제가 없어요');closeQuiz();return}
+  const qk=QZ.data||D.set.data;const ds=DATASETS[qk];const q=nextQuestionFrom(qk);if(!q){toast('풀 문제가 없어요');closeQuiz();return}
   QZ.q=q;QZ.answered=false;
   $('#qProg').textContent=quizProgText();
   $('#qSet').textContent=`문제 데이터: ${ds.name}`+(q.author?` · 출제: ${q.author}`:' · 선생님 문제')+(q.lv?` · ${['','쉬움','보통','어려움'][q.lv]}`:'');
@@ -521,10 +584,10 @@ function answer(i,btn){
   if(!QZ||QZ.answered)return;if(performance.now()<QZ.lockUntil){toast('문제를 끝까지 읽어 보세요');return}
   QZ.answered=true;const q=QZ.q;const ok=i===q.a;const btns=[...$('#qChoices').children];
   btns.forEach((b,k)=>{b.disabled=true;if(k===q.a)b.classList.add('ok')});if(!ok)btn.classList.add('ng');
-  D.stats.qTotal++;
+  D.stats.qTotal++;if(q.vw){vocabMark(q.vw,ok);if(QZ.onVocab)QZ.onVocab()}
   let msg='';
   if(ok){D.stats.qRight++;QZ.right++;sfx('ok');
-    if(QZ.earn){if(D.qDay!==today()){D.qDay=today();D.qToday=0}const r=REWARD[q.lv||1];const give=Math.max(0,Math.min(r,QCAP-D.qToday));D.qToday+=give;D.gold+=give;if(G)G.quizGold=(G.quizGold||0)+give;
+    if(QZ.earn){if(D.qDay!==today()){D.qDay=today();D.qToday=0}const r=((q.vw||q.set==='eng'||(QZ.data||D.set.data)==='eng')?DATASETS.eng.reward:REWARD)[q.lv||1];const give=Math.max(0,Math.min(r,QCAP-D.qToday));D.qToday+=give;D.gold+=give;if(G)G.quizGold=(G.quizGold||0)+give;
       msg=give>0?`<b class="ok">정답! +${give}G</b>`:`<b class="ok">정답!</b> (오늘 문제 골드를 다 받았어요)`;}
     else msg=`<b class="ok">정답!</b>`;
   }else{sfx('no');msg=`<b class="ng">아쉬워요.</b> 정답은 「${escapeHtml(q.c[q.a])}」`}
@@ -1093,7 +1156,7 @@ function nextTurn(first){
   for(let k=0;k<n;k++){idx=(idx+1)%n;if(idx===G.turnStart&&!first){G.cycle++;if(G.me.alive)addGold('생존',10);if(Math.random()<0.45)dropCrate();
       if(G.cycle>G.maxCycles){endRound('time');return}}
     first=false;if(G.tanks[idx].alive)break}
-  G.turn=idx;const t=G.tanks[idx];G.cur=t;
+  G.turn=idx;const t=G.tanks[idx];G.cur=t;wordTipNext();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
   G.state='aim';G.timer=t.isAI?99:20;G.shots=1;G.scope=false;G.double=false;G.teleArm=false;G.warp=false;G.repairUsed=false;t.fuel=t.fuelMax;
   G.wind=clamp((G.wind||0)*0.4+rand(-0.8,0.8),-1,1)*WINDMAX;
@@ -1821,7 +1884,7 @@ function loop(now){
    화면들
    ========================================================= */
 let shopBack='#sLobby';
-const SCREENS=['#sLogin','#sLobby','#sShop','#sUpgrade','#sMake','#sSettings','#sRound','#sFinal'];
+const SCREENS=['#sLogin','#sLobby','#sShop','#sUpgrade','#sMake','#sSettings','#sRound','#sFinal','#sVocab'];
 function hideAllScreens(){SCREENS.forEach(s=>$(s).classList.add('hidden'))}
 function showScreen(s){hideAllScreens();$(s).classList.remove('hidden')}
 function refreshGoldViews(){if(!D)return;['#lbGold','#shGold','#upGold'].forEach(s=>$(s).textContent=D.gold+'G');if(!$('#sShop').classList.contains('hidden'))renderShop();if(!$('#sUpgrade').classList.contains('hidden'))renderUpgrade();if(!$('#sLobby').classList.contains('hidden'))renderLobby();if(G&&G.tanks)updateHud()}
@@ -1876,6 +1939,44 @@ $('#bStart').onclick=()=>{ensureAudio();$('#mSupply').classList.remove('hidden')
 $('#spQuiz').onclick=()=>{$('#mSupply').classList.add('hidden');openQuiz({title:'보급 받기',goal:3,earn:false,onDone:()=>{D.items.repairS++;D.items.scope++;saveNow();toast('보급 완료! 수리 키트 소 +1, 조준경 +1');newMatch()},onClose:ok=>{if(!ok&&!G){toast('보급 없이 출발!');newMatch()}}})};
 $('#spSkip').onclick=()=>{$('#mSupply').classList.add('hidden');newMatch()};
 $('#bLobbyQuiz').onclick=()=>openQuiz({title:'문제 풀고 골드 받기',earn:true});
+/* ---------- 📘 고1 영단어 화면 ---------- */
+let vocabBack='#sLobby';
+function openVocab(back){vocabBack=back||'#sLobby';showScreen('#sVocab');$('#sVocab').scrollTop=0;renderVocab()}
+function renderVocab(){if(!D)return;D.vocab=D.vocab||{};if(D.set.engSets===undefined)D.set.engSets='all';if(D.set.engLv===undefined)D.set.engLv=0;if(D.set.wordTip===undefined)D.set.wordTip=true;
+  const all=VW.length,mast=VW.filter(v=>vMastered(v.w)).length,conf=VW.filter(v=>vConfused(v.w)).length;
+  $('#vcSub').textContent=`선생님이 준 고1 필수 영단어 ${all}개 · SET 1~10 · 하/중/상`;
+  $('#vcProg').textContent=`✅ 외운 단어 ${mast} / ${all}`;$('#vcConf').textContent=`❗ 헷갈리는 단어 ${conf}개`;$('#vcBar').style.width=(mast/all*100)+'%';
+  chipRow($('#vcSets'),[['all','전체 SET']].concat([1,2,3,4,5,6,7,8,9,10].map(n=>[n,'SET '+n])),D.set.engSets,v=>{D.set.engSets=v==='all'?'all':+v;saveNow();renderVocab()});
+  chipRow($('#vcLv'),[[0,'모든 난이도'],[1,'하'],[2,'중'],[3,'상']],D.set.engLv,v=>{D.set.engLv=+v;saveNow();renderVocab()});
+  const R=DATASETS.eng.reward;
+  $('#vcRule').innerHTML=`영단어 문제는 4지선다예요. 영어를 보고 뜻 고르기 / 뜻을 보고 영어 고르기가 섞여 나오고, 보기도 모두 이 목록 안의 단어예요.<br>정답 골드: 하 ${R[1]}G · 중 ${R[2]}G · 상 ${R[3]}G (다른 문제보다 적게 — 대신 문제가 빨리 넘어가요)`;
+  $('#vcUse').textContent=D.set.data==='eng'?'⚔ 전투 중 문제: 영단어 (켜짐)':'⚔ 전투 중 문제를 영단어로 바꾸기';$('#vcUse').classList.toggle('on',D.set.data==='eng');
+  $('#vcTip').textContent='📘 전투 중 단어 띠: '+(D.set.wordTip?'켜짐':'꺼짐');
+  $('#vcWrong').textContent=`❗ 헷갈리는 단어 다시 (${conf})`;
+  const pool=vocabPool().slice().sort((a,b)=>a.w.localeCompare(b.w));$('#vcCount').textContent=`(${pool.length}개)`;
+  $('#vcList').innerHTML=pool.map(v=>{const st=vMastered(v.w)?'ok':vConfused(v.w)?'ng':'';const ic=st==='ok'?'✅':st==='ng'?'❗':'·';
+    return `<div class="vc-item ${st}">${ic} <b>${escapeHtml(v.w)}</b> ${escapeHtml(v.k)} <span class="sub">SET ${v.sets.join('·')} · ${VLV[v.lv]}</span></div>`}).join('')}
+$('#bVocab').onclick=()=>openVocab('#sLobby');
+$('#vcBack').onclick=()=>{if(vocabBack==='#sLobby')openLobby();else{showScreen(vocabBack);if(typeof refreshGoldViews==='function')refreshGoldViews()}};
+$('#vcQuiz').onclick=()=>{if(!vocabPool().length){toast('고른 범위에 단어가 없어요');return}openQuiz({title:'📘 영단어 문제 — 맞히면 골드',earn:true,data:'eng',onClose:renderVocab})};
+$('#vcWrong').onclick=()=>{if(!VW.some(v=>vConfused(v.w))){toast('헷갈리는 단어가 없어요! 👍');return}openQuiz({title:'❗ 헷갈리는 단어 다시 풀기',earn:true,data:'eng',onlyWrong:true,onClose:renderVocab})};
+$('#vcUse').onclick=()=>{if(D.set.data==='eng'){D.set.data=D.set.prevData&&D.set.prevData!=='eng'?D.set.prevData:'phon'}else{D.set.prevData=D.set.data;D.set.data='eng'}saveNow();renderVocab();toast(D.set.data==='eng'?'전투 중 문제·퀴즈 상자·부활 문제가 영단어로 나와요':'전투 문제를 「'+DATASETS[D.set.data].name+'」로 돌렸어요',2400)};
+$('#vcTip').onclick=()=>{D.set.wordTip=!D.set.wordTip;saveNow();renderVocab()};
+// 카드로 외우기 (골드 없음)
+let VC=null;
+function vcNext(){const pool=vocabPool();const v=vocabPick(pool.length?pool:VW);VC={v,shown:false,n:(VC?VC.n:0)+1,known:VC?VC.known:0};vcDraw()}
+function vcDraw(){const {v,shown}=VC;const s=D.vocab[v.w];
+  $('#vcCi').textContent=`카드 ${VC.n} · 아는 단어 ${VC.known} · SET ${v.sets.join('·')} · ${VLV[v.lv]}`+(s&&(s.r||s.x)?` · 맞힘 ${s.r} 틀림 ${s.x}`:'');
+  $('#vcCw').textContent=v.w;$('#vcCk').textContent=shown?v.k:'';const b=$('#vcCbtns');b.innerHTML='';
+  const mk=(t,cls,fn)=>{const e=document.createElement('button');e.className='btn '+cls;e.textContent=t;e.onclick=fn;b.appendChild(e)};
+  if(!shown)mk('👀 뜻 보기','orange',()=>{VC.shown=true;vcDraw()});
+  else{mk('✅ 알아요','green',()=>{vocabMark(v.w,true);VC.known++;saveNow();vcNext()});mk('❌ 몰라요','',()=>{vocabMark(v.w,false);saveNow();vcNext()})}}
+$('#vcCard').onclick=()=>{VC=null;$('#vcCardBox').classList.remove('hidden');vcNext()};
+$('#vcCclose').onclick=()=>{$('#vcCardBox').classList.add('hidden');renderVocab()};
+// 전투 중 단어 띠: 차례가 바뀔 때마다 단어 하나 (헷갈리는 단어를 더 자주)
+function wordTipNext(){const el=$('#wordTip');if(!el)return;const on=D&&D.set.wordTip!==false&&(D.set.data==='eng'||Object.keys(D.vocab||{}).length>0);
+  el.classList.toggle('hidden',!on);if(!on)return;const conf=VW.filter(v=>vConfused(v.w));const pool=conf.length&&Math.random()<0.6?conf:(vocabPool().length?vocabPool():VW);
+  const v=pool[Math.floor(Math.random()*pool.length)];el.innerHTML=`📘 ${escapeHtml(v.w)} = ${escapeHtml(v.k)}<small>${vConfused(v.w)?'❗ 헷갈린 단어':'SET '+v.sets[0]+' · '+VLV[v.lv]}</small>`}
 $('#bShop').onclick=()=>{shopBack='#sLobby';openShop()};
 $('#bUpgrade').onclick=()=>{showScreen('#sUpgrade');renderUpgrade()};
 $('#bSettings').onclick=()=>{showScreen('#sSettings');renderSettings()};
@@ -2622,7 +2723,7 @@ const ON={token:null,name:null,ws:null,channel:'public',className:'',rooms:[],on
 window.ONLINE=ON;
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡',donuts:'도넛 섬',sphinx:'스핑크스 계단',logbridge:'외나무다리',island:'구름 섬',grave:'비석 언덕',wisland:'웜즈 섬',wcave:'웜즈 동굴',cheese:'치즈 섬'};
-const DATANAME={phon:'음운의 변동',add1:'덧셈 (한 자리)',add2:'덧셈 (두 자리)',sub1:'뺄셈',gugu:'구구단',free:'자유 문제'};
+const DATANAME={phon:'음운의 변동',add1:'덧셈 (한 자리)',add2:'덧셈 (두 자리)',sub1:'뺄셈',gugu:'구구단',free:'자유 문제',eng:'고1 영단어'};
 const QUICK=['안녕!','잘했어!','한 판 더!','문제 풀고 올게','준비됐어?','좋은 게임!'];
 
 /* ---------- 화면 ---------- */
@@ -2661,7 +2762,7 @@ const html=`
   </div>
   <div class="row" style="margin-top:10px">
     <button class="btn big green" id="olCreate">방 만들기</button>
-    <button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button>
+    <button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
     <button class="btn" id="olShop">🛒 상점</button><button class="btn" id="olUp">🔧 강화</button><button class="btn" id="olMake">✏️ 문제 만들기</button>
     <button class="btn ghost" id="olOut">나가기</button>
   </div>
@@ -2791,6 +2892,7 @@ $('#olSend').onclick=()=>chatSend('#olText','lobby');$('#olText').addEventListen
 $('#orSend').onclick=()=>chatSend('#orText','room');$('#orText').addEventListener('keydown',e=>{if(e.key==='Enter')chatSend('#orText','room')});
 $('#olCreate').onclick=()=>send({t:'create',name:`${me}의 방`,max:4,mode:'solo',map:'random',rounds:3,data:D.set.data||'phon',turn:20});
 $('#olQuiz').onclick=()=>openQuiz({title:'문제 풀고 골드 받기',earn:true});
+$('#olVocab').onclick=()=>openVocab('#sOnLobby');
 $('#olShop').onclick=()=>{shopBack='#sOnLobby';openShop()};
 $('#olUp').onclick=()=>{showScreen('#sUpgrade');renderUpgrade()};
 $('#olMake').onclick=()=>{makeMode='screen';mkSet=D.set.data;showScreen('#sMake');renderMake()};
@@ -2881,7 +2983,7 @@ function onRound(info){
   if(G.me.shield&&!G.me.isAI&&D.items.startShield>0){D.items.startShield--;saveNow();addText(G.me.x,G.me.y-110,`시작 방어막 켜짐! (남은 ${D.items.startShield}개)`,'#8ff',2.2,18)}
   updateHud();
 }
-function onTurn(m){if(!G||!G.online)return;finishPlay();if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
+function onTurn(m){if(!G||!G.online)return;finishPlay();if(typeof wordTipNext==='function')wordTipNext();if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
   const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
