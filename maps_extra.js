@@ -90,22 +90,27 @@ function twisterTurn(list, WW, surf, wind, rand, nextId) {
   if (list.length < 2 && rand(0, 1) < 0.22) list.push(twisterNew(WW, surf, rand, nextId()));
   return list;
 }
-function twisterStep(p, h, list, rand, onEvt) {
+function twisterStep(p, h, list, rand, onEvt, wind) {
   if (!list || !list.length) return false;
   if (p.tw) {
     const t = list.find(o => o.id === p.tw.id); if (!t) { p.tw = null; return false; }
     p.tw.a += 11 * h; p.y -= 430 * h; const r = 8 + Math.max(0, (t.base - p.y) / t.h) * t.w; p.x = t.x + Math.sin(p.tw.a) * r;
     if (p.y <= t.base - t.h) {
-      p.tw = null; (p.twUsed || (p.twUsed = {}))[t.id] = 1;
-      if (t.fire) { p.vx = rand(-470, 470); p.vy = rand(-430, -60); p.dmgX = 2; if (onEvt) onEvt('fire_out', p); }
-      else { p.vx = rand(-80, 80); p.vy = rand(-170, -40); if (onEvt) onEvt('wind_out', p); }
+      const tw0 = p.tw; p.tw = null; (p.twUsed || (p.twUsed = {}))[t.id] = 1;
+      // 내가 쏜 힘 + 바람 + 회오리 힘을 합쳐서 계속 날아감 (꼭대기에서 힘을 잃고 그 자리로 떨어지지 않게)
+      const vx0 = tw0.vx0 || 0, vy0 = tw0.vy0 || 0, s0 = Math.hypot(vx0, vy0), w = (wind || 0) * 1.6, drift = (t.vx || 0) * 2;
+      if (t.fire) { // 불꽃 회오리: 원래 힘보다 세게, 방향은 예측 불가
+        const sp = Math.max(420, s0) * (0.9 + rand(0, 0.5)), ang = rand(-Math.PI * 0.92, -Math.PI * 0.08);
+        p.vx = Math.cos(ang) * sp + vx0 * 0.35 + w + drift; p.vy = Math.sin(ang) * sp * 0.8; p.dmgX = 2; if (onEvt) onEvt('fire_out', p); }
+      else { // 일반 회오리: 원래 가던 방향 그대로 + 위로 띄워 줌 + 바람
+        p.vx = vx0 * 0.9 + w + drift + rand(-40, 40); p.vy = -Math.max(220, Math.abs(vy0) * 0.45) - rand(0, 160); if (onEvt) onEvt('wind_out', p); }
     }
     return true;
   }
   for (const t of list) {
     if (p.twUsed && p.twUsed[t.id]) continue;
     const k = (t.base - p.y) / t.h;
-    if (k > 0 && k < 1 && Math.abs(p.x - t.x) < t.w * (0.35 + 0.65 * k)) { p.tw = { id: t.id, a: 0 }; if (onEvt) onEvt(t.fire ? 'fire_in' : 'wind_in', p); return true; }
+    if (k > 0 && k < 1 && Math.abs(p.x - t.x) < t.w * (0.35 + 0.65 * k)) { p.tw = { id: t.id, a: 0, vx0: p.vx, vy0: p.vy }; if (onEvt) onEvt(t.fire ? 'fire_in' : 'wind_in', p); return true; }
   }
   return false;
 }
