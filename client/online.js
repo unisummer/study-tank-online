@@ -81,12 +81,12 @@ const html=`
     </div>
   </div>
   <h3>자리</h3><div class="on-slots" id="orSlots"></div>
+  <div class="go-row"><button class="go-btn" id="orStart">▶ 게임 시작!</button><button class="go-btn ready" id="orReady">✋ 준비</button></div>
+  <div class="sub" id="orReadyInfo" style="margin-top:6px;text-align:center"></div>
   <div class="row" style="margin-top:12px">
-    <button class="btn green big" id="orReady">준비</button>
     <button class="btn" id="orTeam">팀 바꾸기</button>
     <button class="btn" id="orFill">빈자리 컴퓨터로 채우기</button>
     <button class="btn ghost" id="orClear">컴퓨터 빼기</button>
-    <button class="btn orange big" id="orStart">시작!</button>
     <button class="btn orange" id="orSupply">📝 보급 받기 (3문제)</button>
   </div>
   <div class="row" style="margin-top:8px">
@@ -97,7 +97,6 @@ const html=`
     <button class="btn" id="orVocab" style="background:#2f7fe0">📘 고1 영단어</button>
     <button class="btn ghost" id="orTut">❓ 처음 안내</button>
   </div>
-  <div class="sub" id="orReadyInfo" style="margin-top:6px"></div>
   <div class="sub" id="orMsg" style="margin-top:8px;min-height:20px"></div>
   <h3>방 채팅</h3><div class="on-chat" id="orChat" style="height:160px"></div>
   <div class="chips" id="orQuick" style="margin-top:6px"></div>
@@ -232,9 +231,9 @@ function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id
     if(host&&!s.ai&&s.uid!==ON.you.id&&r.state==='wait'){const k=document.createElement('button');k.className='chip';k.textContent='내보내기';k.style.marginTop='4px';k.onclick=()=>send({t:'kick',uid:s.uid});d.appendChild(k);const h=document.createElement('button');h.className='chip';h.textContent='👑 방장 넘기기';h.style.margin='4px 0 0 4px';h.onclick=()=>{if(confirm(s.name+' 님에게 방장을 넘길까요?'))send({t:'host',uid:s.uid})};d.appendChild(h)}
     box.appendChild(d)}
   if(r.mode==='team'){[...box.children].sort((a,b)=>(a.classList.contains('t1')?1:0)-(b.classList.contains('t1')?1:0)).forEach(el=>box.appendChild(el))}
-  const rd=$('#orReady');rd.classList.toggle('hidden',host);rd.textContent=mine&&mine.ready?'준비 취소':'준비';{const others=r.slots.filter(s=>!s.ai&&s.uid!==r.host),rn=others.filter(s=>s.ready).length;const ri=$('#orReadyInfo');if(ri)ri.innerHTML=r.state!=='wait'?'':(others.length?`준비 ${rn} / ${others.length}명`+(host?(rn===others.length?' · <b style="color:#5be38a">모두 준비 완료! 시작할 수 있어요</b>':' · 모두 준비하면 시작할 수 있어요'):(mine&&mine.ready?' · 방장이 시작하기를 기다려요':' · 상점·문제 풀기를 마치면 「준비」를 눌러요')):'')}
+  const rd=$('#orReady');rd.classList.toggle('hidden',host);rd.textContent=mine&&mine.ready?'✅ 준비 완료 (누르면 취소)':'✋ 준비하기';rd.classList.toggle('done',!!(mine&&mine.ready));{const others=r.slots.filter(s=>!s.ai&&s.uid!==r.host),rn=others.filter(s=>s.ready).length;const ri=$('#orReadyInfo');if(ri)ri.innerHTML=r.state!=='wait'?'':(others.length?`준비 ${rn} / ${others.length}명`+(host?(rn===others.length?' · <b style="color:#5be38a">모두 준비 완료! 시작할 수 있어요</b>':' · 모두 준비하면 시작할 수 있어요'):(mine&&mine.ready?' · 방장이 시작하기를 기다려요':' · 상점·문제 풀기를 마치면 「준비」를 눌러요')):'')}
   $('#orTeam').classList.toggle('hidden',r.mode!=='team');
-  ['#orFill','#orClear','#orStart'].forEach(b=>$(b).classList.toggle('hidden',!host));
+  ['#orFill','#orClear','#orStart'].forEach(b=>$(b).classList.toggle('hidden',!host));{const others=r.slots.filter(s=>!s.ai&&s.uid!==r.host);const all=others.every(s=>s.ready)&&r.slots.length>=2;$('#orStart').classList.toggle('wait',!all);$('#orStart').textContent=all?'▶ 게임 시작!':(r.slots.length<2?'▶ 게임 시작 (2명 이상 필요)':'▶ 게임 시작 (준비 기다리는 중)')}
   $('#orStart').disabled=r.state!=='wait';$('#orMsg').textContent=r.state==='playing'?'대전 중이에요.':'';
 }
 $('#orReady').onclick=()=>{const m=ON.room&&ON.room.slots.find(s=>s.uid===ON.you.id);send({t:'ready',v:!(m&&m.ready)})};
