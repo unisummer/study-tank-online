@@ -284,7 +284,7 @@ function myGold(l,a){if(a<=0)return;G.roundGold[l]=(G.roundGold[l]||0)+a;G.round
 function boomFx(e){const W=WEAPONS[e.w]||{r:e.r};const r=e.r;
   if(e.dirt){addDirt(e.x,e.y,r);for(const t of G.tanks)if(t.alive&&Math.hypot(t.x-e.x,t.y-10-e.y)<r)addText(t.x,t.y-46,'흙에 묻힘!','#ffe8b0',1.2,16);
     for(let i=0;i<Math.round(r*0.5);i++)G.parts.push({x:e.x,y:e.y,vx:rand(-r*2,r*2),vy:rand(-r*3.5,-40),life:0.9,max:0.9,size:rand(3,8),color:theme.d1,grav:500});G.shake=Math.min(14,r/8);sfx('boom');return}
-  carve(e.x,e.y,r);G.shake=Math.max(G.shake||0,Math.min(e.w==='nuke'?30:18,r/3));sfx(r>50?'bigboom':'boom');
+  carve(e.x,e.y,r);addBoomSprite(e.x,e.y,r);G.shake=Math.max(G.shake||0,Math.min(e.w==='nuke'?30:18,r/3));sfx(r>50?'bigboom':'boom');
   if(e.w==='nuke'){addText(e.x,e.y-90,'💥','#fff',1.5,60);G.flash=0.9;G.shake=30;for(let i=0;i<70;i++){const a=rand(Math.PI*1.1,Math.PI*1.9),sp=rand(80,420);G.parts.push({x:e.x+rand(-40,40),y:e.y,vx:Math.cos(a)*sp*0.5,vy:Math.sin(a)*sp,life:rand(1,2),max:2,size:rand(14,30),color:i%2?'rgba(255,170,60,.55)':'rgba(90,80,80,.5)',grav:-40})}}
   if(e.w==='tri3')G.shake=20;
   const n=Math.min(120,Math.round(r*0.9));for(let i=0;i<n;i++){const a=rand(0,7),s=rand(40,320);G.parts.push({x:e.x,y:e.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,life:rand(0.4,0.9),max:0.9,size:rand(3,8),color:Math.random()<0.5?'#ffb347':'#ff6b3d',grav:300})}
