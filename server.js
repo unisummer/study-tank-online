@@ -138,9 +138,9 @@ function bcChannel(ch, o, exceptRoom) { const s = JSON.stringify(o); for (const 
 function bcRoom(r, o) { const s = JSON.stringify(o); for (const [c, i] of conns) if (i.room === r.id) c.send(s); }
 function onlineList(ch) { const seen = new Map(); for (const i of conns.values()) if (ch === undefined || i.channel === ch) seen.set(i.uid, { name: i.name, room: i.room || null, channel: i.channel }); return [...seen.values()]; }
 const MAPS = ['random', 'hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
-const DATAS = ['phon', 'add1', 'add2', 'sub1', 'gugu', 'free', 'eng'];
+const DATAS = ['phon', 'add1', 'add2', 'sub1', 'gugu', 'div1', 'free', 'eng'];
 // 문제 범위: 초등·중등·고등 — 선생님 화면에서 전체 공간과 반마다 보이는 학년을 정함
-const DATA_GRADE = { add1: 'elem', add2: 'elem', sub1: 'elem', gugu: 'elem', phon: 'high', eng: 'high', free: 'all' };
+const DATA_GRADE = { add1: 'elem', add2: 'elem', sub1: 'elem', gugu: 'elem', div1: 'elem', phon: 'high', eng: 'high', free: 'all' };
 const ALL_GRADES = ['elem', 'mid', 'high'];
 let PUBLIC_GRADES = ALL_GRADES.slice();
 const cleanGrades = g => { const v = Array.isArray(g) ? ALL_GRADES.filter(x => g.includes(x)) : []; return v.length ? v : ALL_GRADES.slice(); };

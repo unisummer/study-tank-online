@@ -10,7 +10,7 @@ const ON={token:null,name:null,ws:null,channel:'public',className:'',rooms:[],on
 window.ONLINE=ON;
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MAPNAME={random:'랜덤',hills:'언덕 평원',sky:'층층 하늘섬',canyon:'절벽 계곡',towers:'탑과 다리',scorched:'스코치드 협곡',donuts:'도넛 섬',sphinx:'스핑크스 계단',logbridge:'외나무다리',island:'구름 섬',grave:'비석 언덕',wisland:'웜즈 섬',wcave:'웜즈 동굴',cheese:'치즈 섬'};
-const DATANAME={phon:'음운의 변동',add1:'덧셈 (한 자리)',add2:'덧셈 (두 자리)',sub1:'뺄셈',gugu:'구구단',free:'자유 문제',eng:'고1 영단어'};
+const DATANAME={phon:'음운의 변동',add1:'덧셈 (한 자리)',add2:'덧셈 (두 자리)',sub1:'뺄셈',gugu:'구구단',div1:'나눗셈',free:'자유 문제',eng:'고1 영단어'};
 const QUICK=['안녕!','잘했어!','한 판 더!','문제 풀고 올게','준비됐어?','좋은 게임!'];
 
 /* ---------- 화면 ---------- */
