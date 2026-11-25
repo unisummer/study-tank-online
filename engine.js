@@ -104,6 +104,38 @@ function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank,
   }
   void cl; void valleys;
 }
+// ---- 환경 요소: 회오리 (포트리스2 참고) ----
+// 일반 회오리: 포탄을 휘감아 하늘로 올렸다가 근처로 떨어뜨림
+// 불꽃 회오리: 포탄을 휘감아 올렸다가 아무 방향으로나 세게 던짐 + 그 포탄의 피해 2배
+function twisterNew(WW, surf, rand, id) {
+  const fire = rand(0, 1) < 0.35, x = rand(WW * 0.12, WW * 0.88);
+  return { id, x, base: surf(x), h: rand(430, 650), w: fire ? 54 : 46, fire, life: 3 + Math.floor(rand(0, 4)), vx: rand(-80, 80) };
+}
+function twisterTurn(list, WW, surf, wind, rand, nextId) {
+  for (const t of list) { t.life--; t.x = Math.max(60, Math.min(WW - 60, t.x + t.vx + wind * 2)); t.base = surf(t.x); }
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].life <= 0) list.splice(i, 1);
+  if (list.length < 2 && rand(0, 1) < 0.22) list.push(twisterNew(WW, surf, rand, nextId()));
+  return list;
+}
+function twisterStep(p, h, list, rand, onEvt) {
+  if (!list || !list.length) return false;
+  if (p.tw) {
+    const t = list.find(o => o.id === p.tw.id); if (!t) { p.tw = null; return false; }
+    p.tw.a += 11 * h; p.y -= 430 * h; const r = 8 + Math.max(0, (t.base - p.y) / t.h) * t.w; p.x = t.x + Math.sin(p.tw.a) * r;
+    if (p.y <= t.base - t.h) {
+      p.tw = null; (p.twUsed || (p.twUsed = {}))[t.id] = 1;
+      if (t.fire) { p.vx = rand(-470, 470); p.vy = rand(-430, -60); p.dmgX = 2; if (onEvt) onEvt('fire_out', p); }
+      else { p.vx = rand(-80, 80); p.vy = rand(-170, -40); if (onEvt) onEvt('wind_out', p); }
+    }
+    return true;
+  }
+  for (const t of list) {
+    if (p.twUsed && p.twUsed[t.id]) continue;
+    const k = (t.base - p.y) / t.h;
+    if (k > 0 && k < 1 && Math.abs(p.x - t.x) < t.w * (0.35 + 0.65 * k)) { p.tw = { id: t.id, a: 0 }; if (onEvt) onEvt(t.fire ? 'fire_in' : 'wind_in', p); return true; }
+  }
+  return false;
+}
 /*EXTRA_MAPS_END*/
 /* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
 function genWorld(seed, kind, nTanks) {
@@ -271,6 +303,15 @@ function makeSim(w, tanks, opts) {
   /* ---- 포탄 ---- */
   let pid = 1;
   const mkP = (o) => Object.assign({ id: pid++, age: 0, mode: 'fly' }, o);
+  // 환경 요소: 회오리
+  S.twisters = []; let twSeq = 1;
+  const surfTop = x => surfaceYW(w, Math.round(x)) > w.WH ? w.WH : surfaceYW(w, Math.round(x));
+  function twEvt(kind, p) { const x = Math.round(p.x), y = Math.round(p.y) - 30;
+    if (kind === 'wind_in') E({ e: 'text', x, y, s: '회오리에 휘말렸다!', c: '#e8f4ff', z: 16 });
+    else if (kind === 'fire_in') E({ e: 'text', x, y, s: '불꽃 회오리!', c: '#ffb347', z: 18 });
+    else if (kind === 'fire_out') E({ e: 'text', x, y, s: '어디로 갈까?!', c: '#ff8a5c', z: 18 }); }
+  S.twTurn = function () { const before = S.twisters.length; twisterTurn(S.twisters, WW, surfTop, S.wind || 0, rand, () => twSeq++); return S.twisters.length > before ? S.twisters[S.twisters.length - 1] : null; };
+  S.twView = () => S.twisters.map(t => ({ id: t.id, x: Math.round(t.x), base: Math.round(t.base), h: Math.round(t.h), w: t.w, fire: t.fire, life: t.life }));
   function startRoll(p) { let n = 0; while (isSolid(p.x, p.y) && n < 14) { p.y--; n++; } p.mode = 'roll'; p.rollT = 0; const l = surfaceAt(p.x - 12, p.y), r = surfaceAt(p.x + 12, p.y); p.dir = Math.abs(l - r) > 3 ? (l > r ? -1 : 1) : (Math.sign(p.vx) || 1); }
   function updRoll(p, dt) {
     p.rollT += dt; const steps = Math.round((p.rollSpeed || 150) * dt);
@@ -286,6 +327,7 @@ function makeSim(w, tanks, opts) {
     if (p.mode === 'roll') return updRoll(p, dt);
     const sp = Math.hypot(p.vx, p.vy); const n = Math.max(1, Math.ceil(sp * dt / 3)); const h = dt / n;
     for (let i = 0; i < n; i++) {
+      if (S.twisters.length && twisterStep(p, h, S.twisters, rand, twEvt)) { p.age += h; continue; }
       const pvy = p.vy; p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h;
       if (p.w === 'mirv' && pvy < 0 && p.vy >= 0) { p.w = 'mirvc'; [-2, -1, 1, 2].forEach(k => S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 55, vy: p.vy, w: 'mirvc', owner: p.owner, age: 1 }))); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 0 }); }
       if (p.w === 'death' && pvy < 0 && p.vy >= 0) { p.w = 'deathc'; for (let k = -5; k <= 5; k++) if (k) S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 42, vy: p.vy + rand(-30, 30), w: 'deathc', owner: p.owner, age: 1 })); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 1 }); }
@@ -310,7 +352,8 @@ function makeSim(w, tanks, opts) {
     if (p.w === 'napalm') { for (let i = 0; i < 12; i++) { let y = p.y, k = 0; while (isSolid(p.x, y) && k < 30) { y--; k++; } S.delayed.push({ t: 0.02 * i, p: sub('napf', { y: y - 2, x: p.x + rand(-10, 10), vx: rand(-160, 160), vy: rand(-180, -60) }) }); } }
     if (p.w === 'air') { text(p.x, p.y - 60, '하늘 폭격!', '#ffd43b', 26); for (let i = 0; i < 9; i++) S.delayed.push({ t: 0.5 + i * 0.12, p: sub('airb', { x: p.x + (i - 4) * 34 + rand(-12, 12), y: -40 - rand(0, 120), vx: rand(-15, 15), vy: 250 }) }); }
     if (W.dirt) { dirtW(w, p.x, p.y, W.r); E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w, dirt: 1 }); return; }
-    const hits = []; for (const t of tanks) { if (!t.alive) continue; const d = Math.hypot(t.x - p.x, (t.y - 10) - p.y); const Rr = W.r + 14; if (d < Rr) { const f = 1 - Math.max(0, d - 8) / Rr * 0.75; const cov = coverMul(p.x, p.y, t.x, t.y - 10); hits.push([t, W.dmg * f * cov * (p.owner.dmgMul || 1), cov]); } }
+    const hits = []; for (const t of tanks) { if (!t.alive) continue; const d = Math.hypot(t.x - p.x, (t.y - 10) - p.y); const Rr = W.r + 14; if (d < Rr) { const f = 1 - Math.max(0, d - 8) / Rr * 0.75; const cov = coverMul(p.x, p.y, t.x, t.y - 10); hits.push([t, W.dmg * f * cov * (p.owner.dmgMul || 1) * (p.dmgX || 1), cov]); } }
+    if (p.dmgX > 1 && hits.length) E({ e: 'text', x: Math.round(p.x), y: Math.round(p.y) - 50, s: '🔥 불꽃 피해 2배!', c: '#ff6b3d', z: 22 });
     carveW(w, p.x, p.y, W.r);
     E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w });
     for (const [t, dmg, cov] of hits) hurt(t, dmg, p.owner, cov);

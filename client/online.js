@@ -259,7 +259,7 @@ function onRound(info){
   const players=G&&G.online&&G.players?G.players:[];
   G={online:true,players,round:info.round,totalRounds:info.total,teamMode:info.teamMode,teamWins:info.teamWins.slice(),matchGold:G&&G.online?G.matchGold:0,
     proj:[],delayed:[],crates:info.crates.map(c=>({id:c.id,x:c.x,y:c.y,ty:c.y,landed:true})),parts:[],texts:[],ghost:null,state:'wait',turn:-1,cycle:1,
-    roundGold:{},roundGoldTotal:0,doubled:false,weapon:'basic',shake:0,flash:0,panHold:0,timer:0,wind:0,turnSec:info.turnSec};
+    roundGold:{},roundGoldTotal:0,doubled:false,weapon:'basic',shake:0,flash:0,panHold:0,timer:0,wind:0,turnSec:info.turnSec,twisters:info.tw||[]};
   G.tanks=info.tanks.map(v=>mkTank(v,players));
   BT.myI=G.tanks.findIndex(t=>t.uid===ON.you.id);G.me=G.tanks[BT.myI]||G.tanks[0];G.cur=null;BT.pmap.clear();BT.play=null;BT.fell=false;BT.aiAim=null;
   document.body.classList.add('battle');hideAllScreens();$('#hud').classList.remove('hidden');
@@ -269,7 +269,7 @@ function onRound(info){
   if(G.me.shield&&!G.me.isAI&&D.items.startShield>0){D.items.startShield--;saveNow();addText(G.me.x,G.me.y-110,`시작 방어막 켜짐! (남은 ${D.items.startShield}개)`,'#8ff',2.2,18)}
   updateHud();
 }
-function onTurn(m){if(!G||!G.online)return;finishPlay();
+function onTurn(m){if(!G||!G.online)return;finishPlay();if(m.tw)G.twisters=m.tw;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
   const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
@@ -423,7 +423,7 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
 }
 function backToRoom(){G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');$('#fnLobby').textContent='로비로';if(ON.room){showRoom();renderRoom()}else showOnLobby()}
-function onSync(m){if(!m.info)return;onRound(m.info);
+function onSync(m){if(!m.info)return;onRound(m.info);if(m.tw)G.twisters=m.tw;
   for(const [dirt,x,y,r] of m.ops){if(dirt)addDirt(x,y,r);else carve(x,y,r)}
   if(m.state==='aim'&&m.turn>=0){onTurn({i:m.turn,wind:m.wind,ms:m.ms,cycle:G.cycle,extra:null})}
   addText(G.me.x,G.me.y-130,'다시 연결됐어요!','#7dffb1',2,18)}

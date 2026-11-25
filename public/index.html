@@ -759,6 +759,38 @@ function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank,
   }
   void cl; void valleys;
 }
+// ---- 환경 요소: 회오리 (포트리스2 참고) ----
+// 일반 회오리: 포탄을 휘감아 하늘로 올렸다가 근처로 떨어뜨림
+// 불꽃 회오리: 포탄을 휘감아 올렸다가 아무 방향으로나 세게 던짐 + 그 포탄의 피해 2배
+function twisterNew(WW, surf, rand, id) {
+  const fire = rand(0, 1) < 0.35, x = rand(WW * 0.12, WW * 0.88);
+  return { id, x, base: surf(x), h: rand(430, 650), w: fire ? 54 : 46, fire, life: 3 + Math.floor(rand(0, 4)), vx: rand(-80, 80) };
+}
+function twisterTurn(list, WW, surf, wind, rand, nextId) {
+  for (const t of list) { t.life--; t.x = Math.max(60, Math.min(WW - 60, t.x + t.vx + wind * 2)); t.base = surf(t.x); }
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].life <= 0) list.splice(i, 1);
+  if (list.length < 2 && rand(0, 1) < 0.22) list.push(twisterNew(WW, surf, rand, nextId()));
+  return list;
+}
+function twisterStep(p, h, list, rand, onEvt) {
+  if (!list || !list.length) return false;
+  if (p.tw) {
+    const t = list.find(o => o.id === p.tw.id); if (!t) { p.tw = null; return false; }
+    p.tw.a += 11 * h; p.y -= 430 * h; const r = 8 + Math.max(0, (t.base - p.y) / t.h) * t.w; p.x = t.x + Math.sin(p.tw.a) * r;
+    if (p.y <= t.base - t.h) {
+      p.tw = null; (p.twUsed || (p.twUsed = {}))[t.id] = 1;
+      if (t.fire) { p.vx = rand(-470, 470); p.vy = rand(-430, -60); p.dmgX = 2; if (onEvt) onEvt('fire_out', p); }
+      else { p.vx = rand(-80, 80); p.vy = rand(-170, -40); if (onEvt) onEvt('wind_out', p); }
+    }
+    return true;
+  }
+  for (const t of list) {
+    if (p.twUsed && p.twUsed[t.id]) continue;
+    const k = (t.base - p.y) / t.h;
+    if (k > 0 && k < 1 && Math.abs(p.x - t.x) < t.w * (0.35 + 0.65 * k)) { p.tw = { id: t.id, a: 0 }; if (onEvt) onEvt(t.fire ? 'fire_in' : 'wind_in', p); return true; }
+  }
+  return false;
+}
 /*EXTRA_MAPS_END*/
 function plank(c,x,y,w,h){c.fillStyle=MAT.plank;c.beginPath();c.roundRect(x,y,w,h,6);c.fill()}
 function genTerrain(th,kind,nTanks){
@@ -902,7 +934,7 @@ function startRound(){
       shield:false,chute:false,spider:false,rot:0,roundKills:0,lastHit:null,deathOrder:0,
       ammo:isMe?null:Object.assign({scatter:1,big:1,dig:1,mirv:G.diff>=1?1:0,roller:1,dirtS:1,dirt:G.diff>=2?1:0},{[SUPER[Math.floor(Math.random()*SUPER.length)]]:G.diff>=1?1:0})}});
   G.me=G.tanks[0];
-  G.proj=[];G.delayed=[];G.crates=[];G.flash=0;G.parts=[];G.texts=[];G.ghost=null;G.state='aim';G.turn=-1;G.cycle=1;G.maxCycles=12;G.deathSeq=0;
+  G.proj=[];G.delayed=[];G.crates=[];G.twisters=[];G.twSeq=1;G.flash=0;G.parts=[];G.texts=[];G.ghost=null;G.state='aim';G.turn=-1;G.cycle=1;G.maxCycles=12;G.deathSeq=0;
   G.roundGold={};G.roundGoldTotal=0;G.doubled=false;G.revived=false;G.reviveAsked=false;G.weapon='basic';G.shake=0;G.panHold=0;G.endT=0;
   G.turnStart=Math.floor(Math.random()*n);G.turn=G.turnStart-1;
   hideAllScreens();$('#hud').classList.remove('hidden');
@@ -925,6 +957,8 @@ function nextTurn(first){
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
   G.state='aim';G.timer=t.isAI?99:20;G.shots=1;G.scope=false;G.double=false;G.teleArm=false;G.warp=false;G.repairUsed=false;t.fuel=t.fuelMax;
   G.wind=clamp((G.wind||0)*0.4+rand(-0.8,0.8),-1,1)*WINDMAX;
+  { const before=G.twisters.length;twisterTurn(G.twisters,WW,surfTop,G.wind,rand,()=>G.twSeq++);const nw=G.twisters[G.twisters.length-1];
+    if(G.twisters.length>before&&nw)addText(nw.x,nw.base-nw.h-30,nw.fire?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',nw.fire?'#ffb347':'#e8f4ff',2.4,22)}
   G.panHold=0;aim=null;closeTray();
   if(t.isAI)aiStart(t);
   if(t===G.me&&mapView){cam.z=mapView.z;mapView=null;$('#bMap').textContent='🗺 전체 맵'}
@@ -966,6 +1000,7 @@ function updProj(p,dt){
   if(p.mode==='roll')return updRoll(p,dt);
   const sp=Math.hypot(p.vx,p.vy);const n=Math.max(1,Math.ceil(sp*dt/3));const h=dt/n;
   for(let i=0;i<n;i++){
+    if(G.twisters&&G.twisters.length&&twisterStep(p,h,G.twisters,rand,twEvt)){p.age+=h;if(p.track&&(i%2===0))p.track.push(p.x,p.y);continue}
     const pvy=p.vy;p.vx+=G.wind*h;p.vy+=GRAV*h;p.x+=p.vx*h;p.y+=p.vy*h;p.age+=h;
     if(p.w==='mirv'&&pvy<0&&p.vy>=0){p.w='mirvc';[-2,-1,1,2].forEach(k=>G.proj.push({x:p.x,y:p.y,vx:p.vx+k*55,vy:p.vy,w:'mirvc',owner:p.owner,age:1,trail:[],mode:'fly'}));addText(p.x,p.y-20,'분열!','#fff',0.8,16)}
     if(p.w==='death'&&pvy<0&&p.vy>=0){p.w='deathc';for(let k=-5;k<=5;k++)if(k)G.proj.push({x:p.x,y:p.y,vx:p.vx+k*42,vy:p.vy+rand(-30,30),w:'deathc',owner:p.owner,age:1,trail:[],mode:'fly'});addText(p.x,p.y-30,'대분열!!','#ffd43b',1.2,26);G.shake=8}
@@ -1009,7 +1044,8 @@ function explode(p){
   if(W.dirt){addDirt(p.x,p.y,W.r);for(const t of G.tanks)if(t.alive&&Math.hypot(t.x-p.x,t.y-10-p.y)<W.r)addText(t.x,t.y-46,'흙에 묻힘!','#ffe8b0',1.2,16);
     for(let i=0;i<Math.round(W.r*0.5);i++)G.parts.push({x:p.x,y:p.y,vx:rand(-W.r*2,W.r*2),vy:rand(-W.r*3.5,-40),life:0.9,max:0.9,size:rand(3,8),color:theme.d1,grav:500});G.shake=Math.min(14,W.r/8);G.flyT=0;sfx('boom');return}
   const hits=[];for(const t of G.tanks){if(!t.alive)continue;const d=Math.hypot(t.x-p.x,(t.y-10)-p.y);const R=W.r+14;
-    if(d<R){const f=1-Math.max(0,d-8)/R*0.75;const cov=coverMul(p.x,p.y,t.x,t.y-10);hits.push([t,W.dmg*f*cov*p.owner.dmgMul,cov])}}
+    if(d<R){const f=1-Math.max(0,d-8)/R*0.75;const cov=coverMul(p.x,p.y,t.x,t.y-10);hits.push([t,W.dmg*f*cov*p.owner.dmgMul*(p.dmgX||1),cov])}}
+  if(p.dmgX>1)addText(p.x,p.y-70,'🔥 불꽃 피해 2배!','#ffb347',1.4,20);
   carve(p.x,p.y,W.r);addBoomSprite(p.x,p.y,W.r);G.shake=Math.max(G.shake||0,Math.min(p.w==='nuke'?30:18,W.r/3));sfx(W.r>50?'bigboom':'boom');
   for(let i=0;i<Math.round(W.r*0.9);i++){const a=rand(0,7),s=rand(40,320);G.parts.push({x:p.x,y:p.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,life:rand(0.4,0.9),max:0.9,size:rand(3,8),color:Math.random()<0.5?'#ffb347':'#ff6b3d',grav:300})}
   for(let i=0;i<14;i++)G.parts.push({x:p.x+rand(-W.r/2,W.r/2),y:p.y+rand(-W.r/2,W.r/2),vx:rand(-30,30),vy:rand(-60,-20),life:1.2,max:1.2,size:rand(8,16),color:'rgba(80,80,80,.5)',grav:-30});
@@ -1032,6 +1068,17 @@ function updCrates(dt){for(const c of G.crates){if(c.gone)continue;
   else if(!isSolid(c.x,c.y+1)&&!isSolid(c.x-10,c.y+1)&&!isSolid(c.x+10,c.y+1))c.landed=false;
   for(const t of G.tanks)if(t.alive&&Math.hypot(t.x-c.x,(t.y-10)-(c.y-12))<30){giveCrate(c,t);break}}
   G.crates=G.crates.filter(c=>!c.gone)}
+/* ---------- 환경 요소: 회오리 그리기 ---------- */
+function surfTop(x){x=Math.round(x);for(let y=0;y<WH;y++)if(isSolid(x,y))return y;return WH}
+function twEvt(kind,p){if(kind==='wind_in')addText(p.x,p.y-30,'회오리에 휘말렸다!','#e8f4ff',1.2,16);else if(kind==='fire_in')addText(p.x,p.y-30,'불꽃 회오리!','#ffb347',1.2,18);else if(kind==='fire_out')addText(p.x,p.y-30,'어디로 갈까?!','#ff8a5c',1.2,18)}
+function drawTwisters(list){if(!list||!list.length)return;const now=performance.now()/1000;
+  for(const t of list){const top=t.base-t.h;
+    for(let i=0;i<26;i++){const k=i/25,y=t.base-k*t.h,r=8+k*t.w,a=now*(t.fire?7:5)+i*0.55;const wob=Math.sin(now*2+i*0.3)*6*k;
+      ctx.globalAlpha=(t.fire?0.55:0.35)*(0.5+0.5*k);ctx.strokeStyle=t.fire?(i%3===0?'#ffd43b':i%3===1?'#ff7a1a':'#e0332b'):(i%2?'#ffffff':'#cfd8e6');ctx.lineWidth=t.fire?4:3;
+      ctx.beginPath();ctx.ellipse(t.x+wob,y,r,Math.max(3,r*0.22),0,a%(Math.PI*2),a%(Math.PI*2)+Math.PI*1.3);ctx.stroke()}
+    ctx.globalAlpha=1;
+    if(t.fire){for(let i=0;i<6;i++){const k=((now*0.7+i/6)%1);const y=t.base-k*t.h;const r=8+k*t.w;ctx.fillStyle=i%2?'rgba(255,190,60,.8)':'rgba(255,90,40,.8)';ctx.beginPath();ctx.arc(t.x+Math.sin(now*6+i)*r,y,3+2*Math.random(),0,7);ctx.fill()}}
+    ctx.font='800 16px system-ui';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';const lb=(t.fire?'🔥 불꽃 회오리':'🌪 회오리')+` (${t.life}턴)`;ctx.strokeText(lb,t.x,top-12);ctx.fillStyle=t.fire?'#ffb347':'#fff';ctx.fillText(lb,t.x,top-12)}}
 function drawCrates(){for(const c of G.crates){ctx.save();ctx.translate(c.x,c.y);
   if(!c.landed){ctx.strokeStyle='rgba(60,60,60,.7)';ctx.lineWidth=1;for(const k of[-14,14]){ctx.beginPath();ctx.moveTo(k*1.3,-58);ctx.lineTo(k*0.6,-22);ctx.stroke()}ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-58,24,Math.PI,0);ctx.fill()}
   ctx.fillStyle='#c98a3a';ctx.fillRect(-13,-24,26,24);ctx.strokeStyle='#7a4f1d';ctx.lineWidth=2.5;ctx.strokeRect(-13,-24,26,24);ctx.beginPath();ctx.moveTo(-13,-24);ctx.lineTo(13,0);ctx.moveTo(13,-24);ctx.lineTo(-13,0);ctx.stroke();
@@ -1484,11 +1531,11 @@ function render(){
   ctx.drawImage(terrain,0,0);
   if(G&&G.tanks){
     if(G.ghost&&G.ghost.length>3){ctx.strokeStyle='rgba(255,255,255,.35)';ctx.setLineDash([6,8]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(G.ghost[0],G.ghost[1]);for(let i=2;i<G.ghost.length;i+=2)ctx.lineTo(G.ghost[i],G.ghost[i+1]);ctx.stroke();ctx.setLineDash([])}
-    drawCrates();
+    drawTwisters(G.twisters);drawCrates();
     drawRopes();G.tanks.forEach(drawTank);
     for(const p of G.proj)if(p.w==='napf'){ctx.fillStyle='rgba(255,140,0,.35)';ctx.beginPath();ctx.arc(p.x,p.y-2,11+Math.sin(performance.now()/60+p.x)*3,0,7);ctx.fill()}
     for(const p of G.proj){ctx.strokeStyle=p.w==='napf'?'rgba(255,120,0,.7)':'rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<p.trail.length;i+=2){i?ctx.lineTo(p.trail[i],p.trail[i+1]):ctx.moveTo(p.trail[i],p.trail[i+1])}ctx.stroke();
-      const W=WEAPONS[p.w]||{};const si=shellIdx(p.w);
+      const W=WEAPONS[p.w]||{};const si=shellIdx(p.w);if(p.dmgX>1){ctx.fillStyle='rgba(255,120,30,.45)';ctx.beginPath();ctx.arc(p.x,p.y,14+Math.sin(performance.now()/50)*3,0,7);ctx.fill()}
       if(si>=0&&sprOk(SPR.shell[si])){const im=SPR.shell[si];const tl=p.trail.length;let ang=0;if(tl>=4)ang=Math.atan2(p.y-p.trail[tl-3],p.x-p.trail[tl-4]);else if(p.vx||p.vy)ang=Math.atan2(p.vy,p.vx);
         const L=[13,20,24,34][si],H=L*im.naturalHeight/im.naturalWidth;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(si?ang:0);ctx.drawImage(im,-L*0.6,-H/2,L,H);ctx.restore();continue}
       ctx.fillStyle=W.dirt?'#a0703c':p.w==='roller'?'#ddd':p.w==='napf'?'#ff8a00':p.w==='nuke'?'#ffe066':['big','death','triple','air'].includes(p.w)?'#ff6b3d':'#222';ctx.beginPath();ctx.arc(p.x,p.y,p.w==='nuke'?10:['big','death'].includes(p.w)?7:p.w==='napf'?4:5,0,7);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke()}
@@ -1798,6 +1845,38 @@ function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank,
   }
   void cl; void valleys;
 }
+// ---- 환경 요소: 회오리 (포트리스2 참고) ----
+// 일반 회오리: 포탄을 휘감아 하늘로 올렸다가 근처로 떨어뜨림
+// 불꽃 회오리: 포탄을 휘감아 올렸다가 아무 방향으로나 세게 던짐 + 그 포탄의 피해 2배
+function twisterNew(WW, surf, rand, id) {
+  const fire = rand(0, 1) < 0.35, x = rand(WW * 0.12, WW * 0.88);
+  return { id, x, base: surf(x), h: rand(430, 650), w: fire ? 54 : 46, fire, life: 3 + Math.floor(rand(0, 4)), vx: rand(-80, 80) };
+}
+function twisterTurn(list, WW, surf, wind, rand, nextId) {
+  for (const t of list) { t.life--; t.x = Math.max(60, Math.min(WW - 60, t.x + t.vx + wind * 2)); t.base = surf(t.x); }
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].life <= 0) list.splice(i, 1);
+  if (list.length < 2 && rand(0, 1) < 0.22) list.push(twisterNew(WW, surf, rand, nextId()));
+  return list;
+}
+function twisterStep(p, h, list, rand, onEvt) {
+  if (!list || !list.length) return false;
+  if (p.tw) {
+    const t = list.find(o => o.id === p.tw.id); if (!t) { p.tw = null; return false; }
+    p.tw.a += 11 * h; p.y -= 430 * h; const r = 8 + Math.max(0, (t.base - p.y) / t.h) * t.w; p.x = t.x + Math.sin(p.tw.a) * r;
+    if (p.y <= t.base - t.h) {
+      p.tw = null; (p.twUsed || (p.twUsed = {}))[t.id] = 1;
+      if (t.fire) { p.vx = rand(-470, 470); p.vy = rand(-430, -60); p.dmgX = 2; if (onEvt) onEvt('fire_out', p); }
+      else { p.vx = rand(-80, 80); p.vy = rand(-170, -40); if (onEvt) onEvt('wind_out', p); }
+    }
+    return true;
+  }
+  for (const t of list) {
+    if (p.twUsed && p.twUsed[t.id]) continue;
+    const k = (t.base - p.y) / t.h;
+    if (k > 0 && k < 1 && Math.abs(p.x - t.x) < t.w * (0.35 + 0.65 * k)) { p.tw = { id: t.id, a: 0 }; if (onEvt) onEvt(t.fire ? 'fire_in' : 'wind_in', p); return true; }
+  }
+  return false;
+}
 /*EXTRA_MAPS_END*/
 /* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
 function genWorld(seed, kind, nTanks) {
@@ -1965,6 +2044,15 @@ function makeSim(w, tanks, opts) {
   /* ---- 포탄 ---- */
   let pid = 1;
   const mkP = (o) => Object.assign({ id: pid++, age: 0, mode: 'fly' }, o);
+  // 환경 요소: 회오리
+  S.twisters = []; let twSeq = 1;
+  const surfTop = x => surfaceYW(w, Math.round(x)) > w.WH ? w.WH : surfaceYW(w, Math.round(x));
+  function twEvt(kind, p) { const x = Math.round(p.x), y = Math.round(p.y) - 30;
+    if (kind === 'wind_in') E({ e: 'text', x, y, s: '회오리에 휘말렸다!', c: '#e8f4ff', z: 16 });
+    else if (kind === 'fire_in') E({ e: 'text', x, y, s: '불꽃 회오리!', c: '#ffb347', z: 18 });
+    else if (kind === 'fire_out') E({ e: 'text', x, y, s: '어디로 갈까?!', c: '#ff8a5c', z: 18 }); }
+  S.twTurn = function () { const before = S.twisters.length; twisterTurn(S.twisters, WW, surfTop, S.wind || 0, rand, () => twSeq++); return S.twisters.length > before ? S.twisters[S.twisters.length - 1] : null; };
+  S.twView = () => S.twisters.map(t => ({ id: t.id, x: Math.round(t.x), base: Math.round(t.base), h: Math.round(t.h), w: t.w, fire: t.fire, life: t.life }));
   function startRoll(p) { let n = 0; while (isSolid(p.x, p.y) && n < 14) { p.y--; n++; } p.mode = 'roll'; p.rollT = 0; const l = surfaceAt(p.x - 12, p.y), r = surfaceAt(p.x + 12, p.y); p.dir = Math.abs(l - r) > 3 ? (l > r ? -1 : 1) : (Math.sign(p.vx) || 1); }
   function updRoll(p, dt) {
     p.rollT += dt; const steps = Math.round((p.rollSpeed || 150) * dt);
@@ -1980,6 +2068,7 @@ function makeSim(w, tanks, opts) {
     if (p.mode === 'roll') return updRoll(p, dt);
     const sp = Math.hypot(p.vx, p.vy); const n = Math.max(1, Math.ceil(sp * dt / 3)); const h = dt / n;
     for (let i = 0; i < n; i++) {
+      if (S.twisters.length && twisterStep(p, h, S.twisters, rand, twEvt)) { p.age += h; continue; }
       const pvy = p.vy; p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h;
       if (p.w === 'mirv' && pvy < 0 && p.vy >= 0) { p.w = 'mirvc'; [-2, -1, 1, 2].forEach(k => S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 55, vy: p.vy, w: 'mirvc', owner: p.owner, age: 1 }))); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 0 }); }
       if (p.w === 'death' && pvy < 0 && p.vy >= 0) { p.w = 'deathc'; for (let k = -5; k <= 5; k++) if (k) S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 42, vy: p.vy + rand(-30, 30), w: 'deathc', owner: p.owner, age: 1 })); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 1 }); }
@@ -2004,7 +2093,8 @@ function makeSim(w, tanks, opts) {
     if (p.w === 'napalm') { for (let i = 0; i < 12; i++) { let y = p.y, k = 0; while (isSolid(p.x, y) && k < 30) { y--; k++; } S.delayed.push({ t: 0.02 * i, p: sub('napf', { y: y - 2, x: p.x + rand(-10, 10), vx: rand(-160, 160), vy: rand(-180, -60) }) }); } }
     if (p.w === 'air') { text(p.x, p.y - 60, '하늘 폭격!', '#ffd43b', 26); for (let i = 0; i < 9; i++) S.delayed.push({ t: 0.5 + i * 0.12, p: sub('airb', { x: p.x + (i - 4) * 34 + rand(-12, 12), y: -40 - rand(0, 120), vx: rand(-15, 15), vy: 250 }) }); }
     if (W.dirt) { dirtW(w, p.x, p.y, W.r); E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w, dirt: 1 }); return; }
-    const hits = []; for (const t of tanks) { if (!t.alive) continue; const d = Math.hypot(t.x - p.x, (t.y - 10) - p.y); const Rr = W.r + 14; if (d < Rr) { const f = 1 - Math.max(0, d - 8) / Rr * 0.75; const cov = coverMul(p.x, p.y, t.x, t.y - 10); hits.push([t, W.dmg * f * cov * (p.owner.dmgMul || 1), cov]); } }
+    const hits = []; for (const t of tanks) { if (!t.alive) continue; const d = Math.hypot(t.x - p.x, (t.y - 10) - p.y); const Rr = W.r + 14; if (d < Rr) { const f = 1 - Math.max(0, d - 8) / Rr * 0.75; const cov = coverMul(p.x, p.y, t.x, t.y - 10); hits.push([t, W.dmg * f * cov * (p.owner.dmgMul || 1) * (p.dmgX || 1), cov]); } }
+    if (p.dmgX > 1 && hits.length) E({ e: 'text', x: Math.round(p.x), y: Math.round(p.y) - 50, s: '🔥 불꽃 피해 2배!', c: '#ff6b3d', z: 22 });
     carveW(w, p.x, p.y, W.r);
     E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w });
     for (const [t, dmg, cov] of hits) hurt(t, dmg, p.owner, cov);
@@ -2378,7 +2468,7 @@ function onRound(info){
   const players=G&&G.online&&G.players?G.players:[];
   G={online:true,players,round:info.round,totalRounds:info.total,teamMode:info.teamMode,teamWins:info.teamWins.slice(),matchGold:G&&G.online?G.matchGold:0,
     proj:[],delayed:[],crates:info.crates.map(c=>({id:c.id,x:c.x,y:c.y,ty:c.y,landed:true})),parts:[],texts:[],ghost:null,state:'wait',turn:-1,cycle:1,
-    roundGold:{},roundGoldTotal:0,doubled:false,weapon:'basic',shake:0,flash:0,panHold:0,timer:0,wind:0,turnSec:info.turnSec};
+    roundGold:{},roundGoldTotal:0,doubled:false,weapon:'basic',shake:0,flash:0,panHold:0,timer:0,wind:0,turnSec:info.turnSec,twisters:info.tw||[]};
   G.tanks=info.tanks.map(v=>mkTank(v,players));
   BT.myI=G.tanks.findIndex(t=>t.uid===ON.you.id);G.me=G.tanks[BT.myI]||G.tanks[0];G.cur=null;BT.pmap.clear();BT.play=null;BT.fell=false;BT.aiAim=null;
   document.body.classList.add('battle');hideAllScreens();$('#hud').classList.remove('hidden');
@@ -2388,7 +2478,7 @@ function onRound(info){
   if(G.me.shield&&!G.me.isAI&&D.items.startShield>0){D.items.startShield--;saveNow();addText(G.me.x,G.me.y-110,`시작 방어막 켜짐! (남은 ${D.items.startShield}개)`,'#8ff',2.2,18)}
   updateHud();
 }
-function onTurn(m){if(!G||!G.online)return;finishPlay();
+function onTurn(m){if(!G||!G.online)return;finishPlay();if(m.tw)G.twisters=m.tw;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
   const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
@@ -2542,7 +2632,7 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
 }
 function backToRoom(){G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');$('#fnLobby').textContent='로비로';if(ON.room){showRoom();renderRoom()}else showOnLobby()}
-function onSync(m){if(!m.info)return;onRound(m.info);
+function onSync(m){if(!m.info)return;onRound(m.info);if(m.tw)G.twisters=m.tw;
   for(const [dirt,x,y,r] of m.ops){if(dirt)addDirt(x,y,r);else carve(x,y,r)}
   if(m.state==='aim'&&m.turn>=0){onTurn({i:m.turn,wind:m.wind,ms:m.ms,cycle:G.cycle,extra:null})}
   addText(G.me.x,G.me.y-130,'다시 연결됐어요!','#7dffb1',2,18)}

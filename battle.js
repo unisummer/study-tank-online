@@ -29,7 +29,7 @@ class Battle {
   loadout(uid) { return (this.room.loadouts && this.room.loadouts[uid]) || {}; }
 
   tankView(t) { return { i: t.i, uid: t.uid, name: t.name, team: t.team, isAI: t.isAI, color: t.color, x: Math.round(t.x), y: Math.round(t.y), hp: t.hp, hpMax: t.hpMax, alive: t.alive, angle: +t.angle.toFixed(3), shield: !!t.shield, rainbow: t.rainbow || 0, chute: !!t.chute, spider: !!t.spider, rot: +(t.rot || 0).toFixed(2), fuelMax: t.fuelMax, dmgMul: t.dmgMul, roundKills: t.roundKills || 0, tier: t.tier || null }; }
-  roundInfo() { return { mapArg: this.room.map, round: this.round, total: this.total, seed: this.seed, kind: this.world.kind, teamMode: this.teamMode, teamWins: this.teamWins, tanks: this.tanks.map(t => this.tankView(t)), crates: this.sim.crates.map(c => ({ id: c.id, x: c.x, y: c.y })), turnSec: this.turnSec, data: this.room.data }; }
+  roundInfo() { return { mapArg: this.room.map, round: this.round, total: this.total, seed: this.seed, kind: this.world.kind, teamMode: this.teamMode, teamWins: this.teamWins, tanks: this.tanks.map(t => this.tankView(t)), crates: this.sim.crates.map(c => ({ id: c.id, x: c.x, y: c.y })), turnSec: this.turnSec, data: this.room.data, tw: this.sim.twView ? this.sim.twView() : [] }; }
 
   startRound() {
     this.round++; this.state = 'start';
@@ -80,12 +80,12 @@ class Battle {
     }
     this.turn = idx; const t = this.tanks[idx];
     this.flags = { double: false, warp: false, repairUsed: false };
-    this.sim.newWind(); this.state = 'aim';
+    this.sim.newWind(); const twN = this.sim.twTurn ? this.sim.twTurn() : null; this.state = 'aim';
     const p = this.players[idx];
     const away = !t.isAI && !this.io.online(t.uid);
     const ms = t.isAI ? 0 : (away ? 4000 : this.turnSec * 1000);
     this.deadline = Date.now() + ms;
-    this.bc({ t: 'b_turn', i: idx, wind: +this.sim.wind.toFixed(2), ms, cycle: this.cycle, extra });
+    this.bc({ t: 'b_turn', i: idx, wind: +this.sim.wind.toFixed(2), ms, cycle: this.cycle, extra, tw: this.sim.twView ? this.sim.twView() : [], twNew: twN ? (twN.fire ? 2 : 1) : 0 });
     if (t.isAI) this.later(() => this.aiAct(t), 900);
     else { const myRound = this.round, myTurn = this.turnId = (this.turnId || 0) + 1; this.later(() => { if (this.state === 'aim' && this.turn === idx && this.round === myRound && this.turnId === myTurn) { this.bc({ t: 'b_sys', text: `${t.name} 시간 끝!` }); this.nextTurn(); } }, ms + 300); }
     void p;
@@ -140,7 +140,7 @@ class Battle {
   checkNext() { if (this.state !== 'inter') return; const humans = this.players.filter(p => !p.ai && this.io.online(p.uid)); if (humans.every(p => this.next.has(p.uid))) this.goNext(); }
   goNext() { if (this.state !== 'inter') return; this.state = 'start'; this.next.clear(); if (this.round >= this.total) this.matchEnd(); else this.startRound(); }
   onAway(uid) { const p = this.players.find(p => p.uid === uid); if (!p || p.ai) return; p.away = Date.now(); this.later(() => { if (p.away && Date.now() - p.away >= AWAY_TO_AI - 100 && !this.io.online(uid)) this.toAI(p, '연결이 끊긴 지 60초가 지나 컴퓨터가 대신해요'); }, AWAY_TO_AI); this.checkNext(); }
-  onBack(uid, send) { const p = this.players.find(p => p.uid === uid); if (p) p.away = 0; send({ t: 'b_sync', info: this.tanks ? this.roundInfo() : null, ops: this.ops || [], turn: this.turn, state: this.state, ms: Math.max(0, (this.deadline || 0) - Date.now()), wind: this.sim ? this.sim.wind : 0, players: this.players.map(p => ({ name: p.name, team: p.team, uid: p.uid, ai: p.ai })) }); }
+  onBack(uid, send) { const p = this.players.find(p => p.uid === uid); if (p) p.away = 0; send({ t: 'b_sync', info: this.tanks ? this.roundInfo() : null, ops: this.ops || [], turn: this.turn, state: this.state, ms: Math.max(0, (this.deadline || 0) - Date.now()), wind: this.sim ? this.sim.wind : 0, tw: this.sim && this.sim.twView ? this.sim.twView() : [], players: this.players.map(p => ({ name: p.name, team: p.team, uid: p.uid, ai: p.ai })) }); }
   toAI(p, why) { p.ai = true; const i = this.players.indexOf(p); if (this.tanks && this.tanks[i]) { this.tanks[i].isAI = true; this.tanks[i].ammo = AI_AMMO(); if (this.state === 'aim' && this.turn === i) this.later(() => this.aiAct(this.tanks[i]), 600); } this.bc({ t: 'b_sys', text: `${p.name}: ${why}` }); this.bc({ t: 'b_ai', i }); this.checkNext(); }
 
   /* ---- 라운드 · 경기 끝 ---- */

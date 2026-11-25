@@ -77,3 +77,35 @@ function paintExtraMap(kind, WW, WH, nTanks, rand, R, col, rect, ellipse, plank,
   }
   void cl; void valleys;
 }
+// ---- 환경 요소: 회오리 (포트리스2 참고) ----
+// 일반 회오리: 포탄을 휘감아 하늘로 올렸다가 근처로 떨어뜨림
+// 불꽃 회오리: 포탄을 휘감아 올렸다가 아무 방향으로나 세게 던짐 + 그 포탄의 피해 2배
+function twisterNew(WW, surf, rand, id) {
+  const fire = rand(0, 1) < 0.35, x = rand(WW * 0.12, WW * 0.88);
+  return { id, x, base: surf(x), h: rand(430, 650), w: fire ? 54 : 46, fire, life: 3 + Math.floor(rand(0, 4)), vx: rand(-80, 80) };
+}
+function twisterTurn(list, WW, surf, wind, rand, nextId) {
+  for (const t of list) { t.life--; t.x = Math.max(60, Math.min(WW - 60, t.x + t.vx + wind * 2)); t.base = surf(t.x); }
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].life <= 0) list.splice(i, 1);
+  if (list.length < 2 && rand(0, 1) < 0.22) list.push(twisterNew(WW, surf, rand, nextId()));
+  return list;
+}
+function twisterStep(p, h, list, rand, onEvt) {
+  if (!list || !list.length) return false;
+  if (p.tw) {
+    const t = list.find(o => o.id === p.tw.id); if (!t) { p.tw = null; return false; }
+    p.tw.a += 11 * h; p.y -= 430 * h; const r = 8 + Math.max(0, (t.base - p.y) / t.h) * t.w; p.x = t.x + Math.sin(p.tw.a) * r;
+    if (p.y <= t.base - t.h) {
+      p.tw = null; (p.twUsed || (p.twUsed = {}))[t.id] = 1;
+      if (t.fire) { p.vx = rand(-470, 470); p.vy = rand(-430, -60); p.dmgX = 2; if (onEvt) onEvt('fire_out', p); }
+      else { p.vx = rand(-80, 80); p.vy = rand(-170, -40); if (onEvt) onEvt('wind_out', p); }
+    }
+    return true;
+  }
+  for (const t of list) {
+    if (p.twUsed && p.twUsed[t.id]) continue;
+    const k = (t.base - p.y) / t.h;
+    if (k > 0 && k < 1 && Math.abs(p.x - t.x) < t.w * (0.35 + 0.65 * k)) { p.tw = { id: t.id, a: 0 }; if (onEvt) onEvt(t.fire ? 'fire_in' : 'wind_in', p); return true; }
+  }
+  return false;
+}
