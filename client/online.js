@@ -48,7 +48,7 @@ const html=`
 </div>
 <div id="sOnLobby" class="screen hidden"><div class="wrap">
   <div class="row" style="justify-content:space-between">
-    <div><h1 style="font-size:28px">탱크 <span class="on-badge">온라인</span></h1><div class="sub" id="olWho"></div></div>
+    <div><h1 style="font-size:28px">스터디 탱크 <span class="on-badge">온라인</span></h1><div class="sub" id="olWho"></div></div>
     <div style="text-align:right"><div class="goldtag" style="font-size:22px" id="olGold">0G</div><div class="sub" id="olRank"></div></div>
   </div>
   <div class="row" style="margin-top:10px">
