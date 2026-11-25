@@ -574,15 +574,16 @@ function setVisGrades(v,save){VIS_GRADES=v&&v.length?v:['elem','mid','high'];if(
 function dataAllowed(k){const d=DATASETS[k];return !!d&&(d.grade==='all'||VIS_GRADES.includes(d.grade))}
 function allowedData(){return Object.keys(DATASETS).filter(dataAllowed)}
 function fixDataChoice(){if(D&&D.set&&!dataAllowed(D.set.data)){const f=allowedData().find(k=>k!=='free')||'free';D.set.data=f;try{saveNow()}catch(e){}}}
-let gradeTab=null;
+let gradeTab=null,gradeTabUser=false;
 function renderDataPicker(box,cur,onPick,withCount){const gs=Object.keys(GRADES).filter(g=>VIS_GRADES.includes(g));
+  if(!gradeTabUser&&DATASETS[cur]&&gs.includes(DATASETS[cur].grade))gradeTab=DATASETS[cur].grade;
   if(!gradeTab||!gs.includes(gradeTab))gradeTab=(DATASETS[cur]&&gs.includes(DATASETS[cur].grade))?DATASETS[cur].grade:gs[0];
   box.innerHTML='';const tabs=document.createElement('div');tabs.className='chips';tabs.style.marginBottom='8px';
-  if(gs.length>1)gs.forEach(g=>{const b=document.createElement('button');b.className='chip'+(g===gradeTab?' on':'');b.style.fontWeight='800';b.textContent=GRADES[g];b.onclick=()=>{gradeTab=g;renderDataPicker(box,cur,onPick,withCount)};tabs.appendChild(b)});
+  if(gs.length>1)gs.forEach(g=>{const b=document.createElement('button');b.className='chip'+(g===gradeTab?' on':'');b.style.fontWeight='800';b.textContent=GRADES[g];b.onclick=()=>{gradeTab=g;gradeTabUser=true;renderDataPicker(box,cur,onPick,withCount)};tabs.appendChild(b)});
   else if(gs.length===1){const t=document.createElement('div');t.className='sub';t.textContent=GRADES[gs[0]]+' 문제';tabs.appendChild(t)}
   box.appendChild(tabs);const row=document.createElement('div');row.className='chips';box.appendChild(row);
   const keys=Object.keys(DATASETS).filter(k=>DATASETS[k].grade===gradeTab||DATASETS[k].grade==='all');
-  chipRow(row,keys.map(k=>{const S=withCount?studentQs(k,false).length:0;return [k,`${DATASETS[k].name} · ${DATASETS[k].who}`+(S?` · 학생 문제 ${S}`:'')]}),cur,onPick);
+  chipRow(row,keys.map(k=>{const S=withCount?studentQs(k,false).length:0;return [k,`${DATASETS[k].name} · ${DATASETS[k].who}`+(S?` · 학생 문제 ${S}`:'')]}),cur,v=>{gradeTabUser=false;onPick(v)});
   if(gradeTab==='mid'&&!keys.some(k=>DATASETS[k].grade==='mid')){const n=document.createElement('div');n.className='sub';n.style.marginTop='6px';n.textContent='중등 문제는 아직 준비 중이에요. 자유 문제(학생이 만든 문제)로 할 수 있어요.';box.appendChild(n)}}
 const queues={};
 function isHidden(id){const r=reports[id];return !!r&&((r.err||0)+(r.bad||0))>=BAL.hideAt}
