@@ -32,7 +32,7 @@ const isAdmin = req => !!ADMIN_KEY && req.headers['x-admin-key'] === ADMIN_KEY;
 
 // ---------- 반 코드 (수업 때 선생님이 공개) ----------
 let CLASSES = {};   // code -> {name, open, created}
-async function loadClasses() { try { const v = await store.kvGet('classes'); if (v) CLASSES = JSON.parse(v); } catch (e) { console.error('classes load', e.message); } }
+async function loadClasses() { try { const v = await store.kvGet('classes'); if (v) CLASSES = JSON.parse(v); const g = await store.kvGet('grades_public'); if (g) PUBLIC_GRADES = cleanGrades(JSON.parse(g)); } catch (e) { console.error('classes load', e.message); } }
 async function saveClasses() { try { await store.kvSet('classes', JSON.stringify(CLASSES)); } catch (e) { console.error('classes save', e.message); } }
 const CODE_RE = /^[A-Z0-9]{4,8}$/;
 function newCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s; do { s = ''; for (let i = 0; i < 5; i++) s += A[crypto.randomInt(A.length)]; } while (CLASSES[s]); return s; }
@@ -91,6 +91,14 @@ async function api(req, res, url) {
       const b = await body(req, 1024); const c = CLASSES[String(b.code || '').toUpperCase()]; if (!c) return send(res, 404, { err: 'no_class' });
       c.open = !!b.open; await saveClasses(); return send(res, 200, { ok: true });
     }
+    if (p === '/api/admin/grades' && req.method === 'GET') return send(res, 200, { public: PUBLIC_GRADES, classes: Object.fromEntries(Object.entries(CLASSES).map(([k, v]) => [k, v.grades || ALL_GRADES])) });
+    if (p === '/api/admin/grades' && req.method === 'POST') {   // 보이는 문제 학년 바꾸기
+      const b = await body(req, 1024); const g = cleanGrades(b.grades); let ch = 'public';
+      if (b.code && b.code !== 'public') { const c = CLASSES[String(b.code).toUpperCase()]; if (!c) return send(res, 404, { err: 'no_class' }); c.grades = g; ch = 'class:' + String(b.code).toUpperCase(); await saveClasses(); }
+      else { PUBLIC_GRADES = g; try { await store.kvSet('grades_public', JSON.stringify(g)); } catch (e) { } }
+      for (const r of ROOMS.values()) if (r.channel === ch && r.state === 'wait' && !dataOk(ch, r.data)) { r.data = firstData(ch); pushRoom(r); }
+      bcChannel(ch, { t: 'grades', grades: g }); return send(res, 200, { ok: true, grades: g });
+    }
     if (p === '/api/admin/chat' && req.method === 'POST') {   // 반 채팅 끄기/켜기
       const b = await body(req, 1024); const ch = String(b.channel || 'public'); CHAT_OFF[ch] = !b.on; bcChannel(ch, { t: 'sys', text: b.on ? '선생님이 채팅을 켰어요.' : '선생님이 채팅을 껐어요.' }); return send(res, 200, { ok: true });
     }
@@ -131,6 +139,14 @@ function bcRoom(r, o) { const s = JSON.stringify(o); for (const [c, i] of conns)
 function onlineList(ch) { const seen = new Map(); for (const i of conns.values()) if (ch === undefined || i.channel === ch) seen.set(i.uid, { name: i.name, room: i.room || null, channel: i.channel }); return [...seen.values()]; }
 const MAPS = ['random', 'hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
 const DATAS = ['phon', 'add1', 'add2', 'sub1', 'gugu', 'free', 'eng'];
+// 문제 범위: 초등·중등·고등 — 선생님 화면에서 전체 공간과 반마다 보이는 학년을 정함
+const DATA_GRADE = { add1: 'elem', add2: 'elem', sub1: 'elem', gugu: 'elem', phon: 'high', eng: 'high', free: 'all' };
+const ALL_GRADES = ['elem', 'mid', 'high'];
+let PUBLIC_GRADES = ALL_GRADES.slice();
+const cleanGrades = g => { const v = Array.isArray(g) ? ALL_GRADES.filter(x => g.includes(x)) : []; return v.length ? v : ALL_GRADES.slice(); };
+function gradesOf(ch) { if (ch && ch.startsWith('class:')) { const c = CLASSES[ch.slice(6)]; if (c && c.grades) return c.grades; } return PUBLIC_GRADES; }
+function dataOk(ch, d) { const g = DATA_GRADE[d]; return DATAS.includes(d) && (g === 'all' || gradesOf(ch).includes(g)); }
+function firstData(ch) { return DATAS.find(d => d !== 'free' && dataOk(ch, d)) || 'free'; }
 function roomView(r) {
   return { id: r.id, name: r.name, host: r.host, max: r.max, mode: r.mode, map: r.map, rounds: r.rounds, data: r.data, turn: r.turn, state: r.state,
     slots: r.slots.map(s => ({ uid: s.uid || 0, name: s.name, team: s.team, ready: !!s.ready, ai: !!s.ai, away: !!s.away, tier: s.ai && !s.uid ? null : tierLite(s.uid) })) };
@@ -169,7 +185,7 @@ function onMsg(c, info, raw) {
       const id = roomSeq++;
       const nr = { id, channel: info.channel, host: info.uid, state: 'wait', created: Date.now(),
         name: clean(m.name).slice(0, 20) || `${info.name}의 방`, max: Math.min(8, Math.max(2, +m.max || 4)), mode: m.mode === 'team' ? 'team' : 'solo',
-        map: MAPS.includes(m.map) ? m.map : 'random', rounds: [1, 3, 5].includes(+m.rounds) ? +m.rounds : 3, data: DATAS.includes(m.data) ? m.data : 'phon',
+        map: MAPS.includes(m.map) ? m.map : 'random', rounds: [1, 3, 5].includes(+m.rounds) ? +m.rounds : 3, data: dataOk(info.channel, m.data) ? m.data : firstData(info.channel),
         turn: [15, 20, 30].includes(+m.turn) ? +m.turn : 20, slots: [] };
       if (nr.mode === 'team' && nr.max % 2) nr.max++;
       nr.slots.push({ uid: info.uid, name: info.name, team: 0, ready: false });
@@ -190,7 +206,7 @@ function onMsg(c, info, raw) {
     case 'set': {   // 방장만 설정 변경
       if (!r || r.host !== info.uid || r.state !== 'wait') return;
       if (m.map && MAPS.includes(m.map)) r.map = m.map;
-      if (m.data && DATAS.includes(m.data)) r.data = m.data;
+      if (m.data && dataOk(r.channel, m.data)) r.data = m.data;
       if ([1, 3, 5].includes(+m.rounds)) r.rounds = +m.rounds;
       if ([15, 20, 30].includes(+m.turn)) r.turn = +m.turn;
       if (m.mode === 'solo' || m.mode === 'team') { r.mode = m.mode; if (r.mode === 'team') { if (r.max % 2) r.max++; r.slots.forEach((s, i) => s.team = i % 2); } else r.slots.forEach(s => s.team = 0); }
@@ -260,7 +276,7 @@ attach(server, '/ws', async (c, url) => {
       awayTimers.set(info.uid, { room: r.id, t: setTimeout(() => { awayTimers.delete(info.uid); if (r.battle) { const any = [...conns.values()].some(i => i.room === r.id); if (!any) { r.battle.stop(); ROOMS.delete(r.id); pushLobby(r.channel); } return; } leaveRoom(info); }, 60000) }); }
     pushLobby(channel);
   };
-  S(c, { t: 'hello', you: { id: info.uid, name: info.name, tier: RT.tierOf(info.uid) }, channel, className: code ? CLASSES[code].name : '', rooms: lobbyView(channel), online: onlineList(channel), chat: (CHAT[channel] || []).slice(-30), chatOff: !!CHAT_OFF[channel] });
+  S(c, { t: 'hello', grades: gradesOf(channel), you: { id: info.uid, name: info.name, tier: RT.tierOf(info.uid) }, channel, className: code ? CLASSES[code].name : '', rooms: lobbyView(channel), online: onlineList(channel), chat: (CHAT[channel] || []).slice(-30), chatOff: !!CHAT_OFF[channel] });
   if (info.room) { const rr = ROOMS.get(info.room); pushRoom(rr); if (rr.battle) rr.battle.onBack(info.uid, o => S(c, o)); } else pushLobby(channel);
 });
 

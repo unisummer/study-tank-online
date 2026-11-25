@@ -138,7 +138,7 @@ function enterOnline(name,data,isNew){
   saveNow();connect();showOnLobby();
 }
 async function pushSave(){try{await fetch('/api/multi',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ON.token},body:JSON.stringify({data:D})})}catch(e){}}
-function leaveOnline(){window.ONLINE_MODE=false;try{ON.ws&&ON.ws.close()}catch(e){}ON.ws=null;ON.token=null;me=null;D=null;saveNow=saveLocal;openLobby=openLobbyLocal;showScreen('#sLogin');renderLogin()}
+function leaveOnline(){window.ONLINE_MODE=false;try{const v=JSON.parse(localStorage.getItem('gt_grades')||'null');setVisGrades(Array.isArray(v)?v:null,false)}catch(e){setVisGrades(null,false)}try{ON.ws&&ON.ws.close()}catch(e){}ON.ws=null;ON.token=null;me=null;D=null;saveNow=saveLocal;openLobby=openLobbyLocal;showScreen('#sLogin');renderLogin()}
 
 /* ---------- 연결 ---------- */
 function connect(){
@@ -154,7 +154,8 @@ function onMsg(m){
   switch(m.t){
     case 'my_tier':if(ON.you){ON.you.tier=m.tier;renderLobbyOn()}break;
     case 'rank':showBoard(m);break;
-    case 'hello':ON.you=m.you;ON.channel=m.channel;ON.className=m.className;ON.rooms=m.rooms;ON.online=m.online;$('#olChat').innerHTML='';m.chat.forEach(c=>addChat('#olChat',c));if(m.chatOff)addSys('#olChat','지금은 선생님이 채팅을 꺼 두었어요.');renderLobbyOn();break;
+    case 'grades':setVisGrades(m.grades,false);toast('선생님이 고를 수 있는 문제 범위를 바꿨어요',2200);if(ON.room)renderRoom();break;
+    case 'hello':if(m.grades)setVisGrades(m.grades,false);ON.you=m.you;ON.channel=m.channel;ON.className=m.className;ON.rooms=m.rooms;ON.online=m.online;$('#olChat').innerHTML='';m.chat.forEach(c=>addChat('#olChat',c));if(m.chatOff)addSys('#olChat','지금은 선생님이 채팅을 꺼 두었어요.');renderLobbyOn();break;
     case 'rooms':ON.rooms=m.rooms;ON.online=m.online;renderLobbyOn();break;
     case 'room':{const was=ON.room;ON.room=m.room;if(!was||was.id!==m.room.id){$('#orChat').innerHTML=''}if(!(G&&G.online)&&(m.room.state==='wait'||!was))showRoom();renderRoom();break}
     case 'left':ON.room=null;if(m.why)toast(m.why);showOnLobby();break;
@@ -190,7 +191,7 @@ quick('#olQuick','lobby');quick('#orQuick','room');
 function chatSend(inp,scope){const v=$(inp).value.trim();if(!v)return;send({t:'chat',text:v,scope});$(inp).value=''}
 $('#olSend').onclick=()=>chatSend('#olText','lobby');$('#olText').addEventListener('keydown',e=>{if(e.key==='Enter')chatSend('#olText','lobby')});
 $('#orSend').onclick=()=>chatSend('#orText','room');$('#orText').addEventListener('keydown',e=>{if(e.key==='Enter')chatSend('#orText','room')});
-$('#olCreate').onclick=()=>send({t:'create',name:`${me}의 방`,max:4,mode:'solo',map:'random',rounds:3,data:D.set.data||'phon',turn:20});
+$('#olCreate').onclick=()=>{fixDataChoice();send({t:'create',name:`${me}의 방`,max:4,mode:'solo',map:'random',rounds:3,data:D.set.data||'phon',turn:20})};
 $('#olQuiz').onclick=()=>openQuiz({title:'문제 풀고 골드 받기',earn:true});
 $('#olVocab').onclick=()=>openVocab('#sOnLobby');
 // 방 안에서 상점·강화·문제 풀기 (방을 나가지 않음). 준비한 상태로 가면 준비가 풀림 → 다 사고 다시 준비
@@ -221,7 +222,7 @@ function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id
     chipsTo('#orRounds',[[1,'1'],[3,'3'],[5,'5']],r.rounds,v=>send({t:'set',rounds:v}),true);
     chipsTo('#orTurn',[[15,'15초'],[20,'20초'],[30,'30초']],r.turn,v=>send({t:'set',turn:v}),true);
     chipsTo('#orMap',Object.keys(MAPNAME).map(k=>[k,MAPNAME[k]]),r.map,v=>send({t:'set',map:v}),true);
-    chipsTo('#orData',Object.keys(DATANAME).map(k=>[k,DATANAME[k]]),r.data,v=>send({t:'set',data:v}),true)}
+    chipsTo('#orData',Object.keys(DATANAME).filter(k=>dataAllowed(k)).sort((x,y)=>{const o={elem:0,mid:1,high:2,all:3};return o[(DATASETS[x]||{}).grade||'all']-o[(DATASETS[y]||{}).grade||'all']}).map(k=>[k,(DATASETS[k]&&DATASETS[k].grade!=='all'?GRADES[DATASETS[k].grade].split(' ')[1]+' · ':'')+DATANAME[k]]),r.data,v=>send({t:'set',data:v}),true)}
   const box=$('#orSlots');box.innerHTML='';
   for(let i=0;i<r.max;i++){const s=r.slots[i];const d=document.createElement('div');
     if(!s){d.className='on-slot empty';d.textContent='빈자리';box.appendChild(d);continue}

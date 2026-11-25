@@ -19,6 +19,9 @@ table{width:100%;border-collapse:collapse;margin-top:8px}td,th{padding:8px;borde
 <div class="card"><b>새 반 코드 만들기</b><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="cname" placeholder="반 이름 (예: 2학년 3반 국어)" maxlength="20" style="flex:1"><button class="g" id="mk">만들기</button></div></div>
 <div class="card"><b>순위표 · 티어</b> <button class="k" id="rkLoad" style="padding:4px 10px;font-size:13px">순위 보기</button> <button class="k" id="rkReset" style="padding:4px 10px;font-size:13px;background:#c9302c">순위 초기화 (새 수업 시작)</button>
 <div class="sub">최종 점수 = 승률 점수(승률 × 배점: 1~9판 1,000 · 10~99판 2,000 · 100판 이상 4,000) + 플레이 점수(판 수 × 5). 이 점수 순위로 티어가 정해져요.</div><table id="rk"></table></div>
+<div class="card"><b>📚 문제 범위 (초등 · 중등 · 고등)</b> <button class="k" id="grLoad" style="padding:4px 10px;font-size:13px">새로 고침</button>
+<div class="sub">학생이 고를 수 있는 문제 학년을 정해요. 고등학교 수업이면 「고등」만 켜 두세요 — 덧셈·뺄셈·구구단(초등)이 선택지에서 사라져요. 반 코드로 들어온 학생은 그 반 설정, 반 코드 없이 들어온 학생은 「전체 공간」 설정을 따라요. 바꾸면 접속 중인 학생 화면에 바로 적용돼요.</div>
+<table id="gr"></table></div>
 <div class="card"><b>반 목록</b> <button class="k" id="rf" style="padding:4px 10px;font-size:13px">새로 고침</button><table id="tbl"></table></div>
 <div class="card"><b>지금 접속한 학생</b><div class="sub" id="ol"></div></div>
 </div></div>
@@ -39,6 +42,14 @@ $('#tbl').onclick=async e=>{const b=e.target;if(b.dataset.c){await call('/api/ad
 function alertBox(t){const d=document.createElement('div');d.className='card';d.innerHTML=`<span class="code">${t}</span><div class="sub">학생들에게 이 코드를 알려 주세요.</div>`;$('#main').prepend(d)}
 if(KEY)load();setInterval(()=>{if(KEY&&!$('#main').classList.contains('hidden'))load()},15000);
 
+const GN={elem:'🎒 초등',mid:'📗 중등',high:'🎓 고등'};let GRC={};
+async function grLoad(){const j=await call('/api/admin/grades');const cls=await call('/api/admin/classes');GRC=j;
+  const rows=[['public','전체 공간 (반 코드 없음)',j.public]].concat(Object.entries(cls.classes).map(([c,v])=>[c,`${v.name.replace(/</g,'&lt;')} (${c})`,j.classes[c]||['elem','mid','high']]));
+  $('#gr').innerHTML='<tr><th>어디</th><th>보이는 학년 (눌러서 켜고 끄기)</th></tr>'+rows.map(([c,n,g])=>`<tr><td>${n}</td><td>${Object.keys(GN).map(k=>`<button data-gc="${c}" data-gk="${k}" class="${g.includes(k)?'g':'k'}" style="margin:2px;padding:6px 10px">${g.includes(k)?'✅':'⬜'} ${GN[k]}</button>`).join('')}</td></tr>`).join('')}
+$('#grLoad').onclick=grLoad;
+$('#gr').onclick=async e=>{const b=e.target.closest('button');if(!b||!b.dataset.gc)return;const c=b.dataset.gc,k=b.dataset.gk;const cur=c==='public'?GRC.public:(GRC.classes[c]||['elem','mid','high']);
+  const nx=cur.includes(k)?cur.filter(x=>x!==k):cur.concat(k);if(!nx.length){alert('적어도 한 학년은 켜 두어야 해요.');return}await call('/api/admin/grades',{code:c,grades:nx});grLoad()};
+setTimeout(()=>{if(KEY)grLoad().catch(()=>{})},400);
 $('#rkLoad').onclick=async()=>{const j=await call('/api/admin/ranking');
   $('#rk').innerHTML='<tr><th>순위</th><th>이름</th><th>티어</th><th>최종 점수</th><th>승률</th><th>판</th></tr>'+(j.board||[]).map(p=>`<tr><td>${p.rank}</td><td>${String(p.player).replace(/</g,'&lt;')}</td><td><span style="background:${p.color};color:#111;border-radius:99px;padding:1px 8px;font-weight:800">${p.name}</span></td><td>${p.r}</td><td>${p.wr}%</td><td>${p.games}</td></tr>`).join('')};
 $('#rkReset').onclick=async()=>{if(!confirm('모든 학생의 순위·티어 기록을 지울까요? 골드와 아이템은 그대로예요.'))return;await call('/api/admin/ranking/reset',{});$('#rkLoad').onclick()};
