@@ -219,7 +219,7 @@ function onMsg(c, info, raw) {
         tier: uid => tierLite(uid),
         rate: (st, tm, tw) => { const out = RT.apply(st, tm, tw); for (const c2 of conns.keys()) { const i2 = conns.get(c2); if (out[i2.uid]) S(c2, { t: 'my_tier', tier: RT.tierOf(i2.uid) }); } return out; },
         online: uid => { for (const i of conns.values()) if (i.uid === uid && i.room === r.id) return true; return false; },
-        done: () => { r.slots = r.slots.filter(s => s.ai || [...conns.values()].some(i => i.uid === s.uid && i.room === r.id)); r.slots.forEach(s => s.away = false); if (!r.slots.some(s => !s.ai)) { ROOMS.delete(r.id); pushLobby(r.channel); return; } if (!r.slots.some(s => s.uid === r.host)) r.host = r.slots.find(s => !s.ai).uid; pushRoom(r); },
+        done: () => { r.slots = r.slots.filter(s => s.ai || [...conns.values()].some(i => i.uid === s.uid && i.room === r.id)); r.slots.forEach(s => s.away = false); if (!r.slots.some(s => !s.ai)) { ROOMS.delete(r.id); pushLobby(r.channel); return; } if (!r.slots.some(s => s.uid === r.host)) r.host = r.slots.find(s => !s.ai).uid; r.slots.forEach(s => { if (!s.ai) s.ready = false; }); pushRoom(r); bcRoom(r, { t: 'sys', text: '경기가 끝나 준비가 모두 풀렸어요. 상점·문제 풀기를 마치고 다시 「준비」를 누르면 방장이 시작해요.' }); },
       });
       return;
     }

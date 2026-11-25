@@ -2798,6 +2798,13 @@ const html=`
     <button class="btn orange big" id="orStart">시작!</button>
     <button class="btn orange" id="orSupply">📝 보급 받기 (3문제)</button>
   </div>
+  <div class="row" style="margin-top:8px">
+    <button class="btn orange" id="orQuiz">📝 문제 풀고 골드</button>
+    <button class="btn" id="orShop">🛒 상점</button>
+    <button class="btn" id="orUp">🔧 강화</button>
+    <button class="btn" id="orVocab" style="background:#2f7fe0">📘 고1 영단어</button>
+  </div>
+  <div class="sub" id="orReadyInfo" style="margin-top:6px"></div>
   <div class="sub" id="orMsg" style="margin-top:8px;min-height:20px"></div>
   <h3>방 채팅</h3><div class="on-chat" id="orChat" style="height:160px"></div>
   <div class="chips" id="orQuick" style="margin-top:6px"></div>
@@ -2893,6 +2900,12 @@ $('#orSend').onclick=()=>chatSend('#orText','room');$('#orText').addEventListene
 $('#olCreate').onclick=()=>send({t:'create',name:`${me}의 방`,max:4,mode:'solo',map:'random',rounds:3,data:D.set.data||'phon',turn:20});
 $('#olQuiz').onclick=()=>openQuiz({title:'문제 풀고 골드 받기',earn:true});
 $('#olVocab').onclick=()=>openVocab('#sOnLobby');
+// 방 안에서 상점·강화·문제 풀기 (방을 나가지 않음). 준비한 상태로 가면 준비가 풀림 → 다 사고 다시 준비
+function roomUnready(){const r=ON.room;if(!r)return;const m=r.slots.find(s=>s.uid===ON.you.id);if(m&&m.ready&&r.host!==ON.you.id){send({t:'ready',v:false});toast('준비가 풀렸어요. 다 끝나면 다시 「준비」를 눌러요',2400)}}
+$('#orShop').onclick=()=>{roomUnready();shopBack='#sOnRoom';openShop()};
+$('#orUp').onclick=()=>{roomUnready();showScreen('#sUpgrade');renderUpgrade()};
+$('#orQuiz').onclick=()=>openQuiz({title:'문제 풀고 골드 받기',earn:true});
+$('#orVocab').onclick=()=>openVocab('#sOnRoom');
 $('#olShop').onclick=()=>{shopBack='#sOnLobby';openShop()};
 $('#olUp').onclick=()=>{showScreen('#sUpgrade');renderUpgrade()};
 $('#olMake').onclick=()=>{makeMode='screen';mkSet=D.set.data;showScreen('#sMake');renderMake()};
@@ -2924,7 +2937,7 @@ function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id
     if(host&&!s.ai&&s.uid!==ON.you.id&&r.state==='wait'){const k=document.createElement('button');k.className='chip';k.textContent='내보내기';k.style.marginTop='4px';k.onclick=()=>send({t:'kick',uid:s.uid});d.appendChild(k)}
     box.appendChild(d)}
   if(r.mode==='team'){[...box.children].sort((a,b)=>(a.classList.contains('t1')?1:0)-(b.classList.contains('t1')?1:0)).forEach(el=>box.appendChild(el))}
-  const rd=$('#orReady');rd.classList.toggle('hidden',host);rd.textContent=mine&&mine.ready?'준비 취소':'준비';
+  const rd=$('#orReady');rd.classList.toggle('hidden',host);rd.textContent=mine&&mine.ready?'준비 취소':'준비';{const others=r.slots.filter(s=>!s.ai&&s.uid!==r.host),rn=others.filter(s=>s.ready).length;const ri=$('#orReadyInfo');if(ri)ri.innerHTML=r.state!=='wait'?'':(others.length?`준비 ${rn} / ${others.length}명`+(host?(rn===others.length?' · <b style="color:#5be38a">모두 준비 완료! 시작할 수 있어요</b>':' · 모두 준비하면 시작할 수 있어요'):(mine&&mine.ready?' · 방장이 시작하기를 기다려요':' · 상점·문제 풀기를 마치면 「준비」를 눌러요')):'')}
   $('#orTeam').classList.toggle('hidden',r.mode!=='team');
   ['#orFill','#orClear','#orStart'].forEach(b=>$(b).classList.toggle('hidden',!host));
   $('#orStart').disabled=r.state!=='wait';$('#orMsg').textContent=r.state==='playing'?'대전 중이에요.':'';
