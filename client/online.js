@@ -53,7 +53,7 @@ const html=`
   </div>
   <div class="row" style="margin-top:10px">
     <button class="btn big green" id="olCreate">방 만들기</button>
-    <button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
+    <button class="btn orange claimBtn hidden" id="olClaim"></button><button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
     <button class="btn" id="olShop">🛒 상점</button><button class="btn" id="olUp">🔧 강화</button><button class="btn" id="olMake">✏️ 문제 만들기</button>
     <button class="btn ghost" id="olTut">❓ 처음 안내</button><button class="btn ghost" id="olOut">나가기</button>
   </div>
@@ -90,6 +90,7 @@ const html=`
     <button class="btn orange" id="orSupply">📝 보급 받기 (3문제)</button>
   </div>
   <div class="row" style="margin-top:8px">
+    <button class="btn orange claimBtn hidden" id="orClaim"></button>
     <button class="btn orange" id="orQuiz">📝 문제 풀고 골드</button>
     <button class="btn" id="orShop">🛒 상점</button>
     <button class="btn" id="orUp">🔧 강화</button>
@@ -249,7 +250,8 @@ const TE=window.TankEngine;
 const BT={pmap:new Map(),play:null,lastPos:0,posKey:'',fell:false,aiAim:null,myI:-1};
 const NAMEW=k=>(WEAPONS[k]||WEAPONS.basic).name;
 function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
-function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');toast('대전 시작!',1500)}
+function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');const r=m.room||ON.room;BT.eng=!!(r&&r.data==='eng');
+  if(BT.eng){D.gold=Math.max(0,D.gold-ENG_FEE);saveNow();toast(`📘 영단어 버전: 참가비 ${ENG_FEE}G를 냈어요. 보상은 경기가 끝나고 영단어 ${ENG_CLAIM}문제로 받아요`,3200)}else toast('대전 시작!',1500)}
 
 // 서버와 같은 맵을 만들고, 혼자 하기와 같은 색으로 칠한다
 function buildTerrain(world){
@@ -274,6 +276,7 @@ function mkTank(v,players){const p=players[v.i]||(players[v.i]={name:v.name,poin
 function setFromView(t,v){Object.assign(t,{x:v.x,y:v.y,tx:v.x,ty:v.y,hp:v.hp,alive:v.alive,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,isAI:v.isAI});if(t!==G.me||G.cur!==G.me)t.angle=v.angle;t.vx=0;t.vy=0;t.air=false}
 
 function onRound(info){
+  BT.eng=!!(ON.room&&ON.room.data==='eng');
   if(info.round===1)setTimeout(()=>{if(G&&G.online)tutMaybe('battle')},900);
   if(typeof QZ!=='undefined'&&QZ)closeQuiz();
   const world=TE.genWorld(info.seed,info.mapArg,info.tanks.length);buildTerrain(world);
@@ -425,7 +428,7 @@ function onItemRes(m){if(!G||!G.online)return;const t=G.tanks[m.i];if(!t)return;
 /* ---- 라운드 · 경기 끝 ---- */
 function onRoundEnd(m){if(!G||!G.online)return;finishPlay();G.state='over';aim=null;closeTray();
   const gold=m.gold[BT.myI]||{};G.roundGold=gold;G.roundGoldTotal=Object.values(gold).reduce((a,b)=>a+b,0);
-  D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();sendLoadout();
+  if(BT.eng)D.lockGold=(D.lockGold||0)+G.roundGoldTotal;else D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();sendLoadout();
   m.points.forEach((pt,i)=>{if(G.players[i])G.players[i].points=pt});G.teamWins=m.teamWins.slice();
   m.ranks.forEach(r=>{const t=G.tanks[r.i];t.rank=r.rank;t.roundKills=r.kills});
   const my=G.me.rank,n=G.tanks.length;$('#hud').classList.add('hidden');
@@ -437,7 +440,8 @@ function onRoundEnd(m){if(!G||!G.online)return;finishPlay();G.state='over';aim=n
   if(G.teamMode){html+=`<tr><td>${TEAMNAME[m.winTeam]} 승리</td><td class="n">${TEAMNAME[0]} ${G.teamWins[0]} : ${G.teamWins[1]} ${TEAMNAME[1]}</td></tr>`;G.tanks.forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">[${TEAMNAME[t.team]}] ${esc(t.name)}${t.alive?'':' (격파)'}</td><td class="n">처치 ${t.roundKills}</td></tr>`)}
   else G.tanks.slice().sort((a,b)=>a.rank-b.rank).forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">${t.rank}. ${esc(t.name)}</td><td class="n">+${n-t.rank}점 (합계 ${t.p.points})</td></tr>`);
   $('#rdTable').innerHTML=html;
-  const db=$('#rdDouble');db.disabled=G.roundGoldTotal<=0;db.textContent=`📝 2문제 맞히고 보상 2배 (+${G.roundGoldTotal}G)`;db.classList.remove('hidden');
+  const db=$('#rdDouble');db.disabled=G.roundGoldTotal<=0;db.textContent=`📝 2문제 맞히고 보상 2배 (+${G.roundGoldTotal}G)`;db.classList.toggle('hidden',!!BT.eng);
+  if(BT.eng)$('#rdSub').innerHTML+=`<br>🔒 영단어 버전: 보상은 보관 중 (모두 <span class="goldtag">${D.lockGold}G</span>) — 경기가 끝나면 영단어 ${ENG_CLAIM}문제를 맞혀 받아요`;
   const nx=$('#rdNext');nx.disabled=false;nx.textContent=m.round>=m.total?'최종 결과 보기 ▶':'다음 라운드 준비 ▶';
   BT.roundEndAt=Date.now();showScreen('#sRound');
 }
@@ -454,7 +458,7 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   $('#fnSub').innerHTML=`티어 ${tierBadge(after)}`+(chg?` (${before.name} → ${after.name})`:'')+`<br>최종 점수 ${before.r} → <b>${after.r}</b> (${RT&&RT.d>=0?'+':''}${RT?RT.d:0}) = 승률 점수 ${after.winPt} (승률 ${after.wr}% × 배점 ${after.weight}) + 플레이 점수 ${after.playPt}`+(after.rank?`<br>전체 ${after.of}명 중 ${after.rank}등 (상위 ${after.top}%)`:'')+`<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(chg?(before.name==='첫 판 전'?`<br><span class="badge">첫 티어! ${after.name}</span>`:`<br><span class="badge">${up?'티어 상승!':'티어 하락…'} ${after.name}</span>`):'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
-  $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
+  $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';if(BT.eng&&D.lockGold>0){$('#fnSub').innerHTML+=`<br>🔒 보관 중인 보상 <span class="goldtag">${D.lockGold}G</span> — 영단어 ${ENG_CLAIM}문제를 맞히면 받아요`;updClaim();setTimeout(claimLocked,900)}
 }
 function backToRoom(){G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');$('#fnLobby').textContent='로비로';if(ON.room){showRoom();renderRoom()}else showOnLobby()}
 function onSync(m){if(!m.info)return;onRound(m.info);if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;
@@ -468,8 +472,8 @@ $('#rdNext').onclick=()=>{if(!(G&&G.online))return _rdNext();sendLoadout();send(
 $('#fnLobby').onclick=()=>{if(!(G&&G.online))return _fnLobby();backToRoom()};
 $('#mnQuit').onclick=()=>{if(!(G&&G.online))return _mnQuit();$('#mMenu').classList.add('hidden');if(!confirmQuit())return;send({t:'leave'});ON.room=null;G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');showOnLobby()};
 function confirmQuit(){return window.__gtNoConfirm||window.confirm('대전에서 나갈까요? 내 탱크는 컴퓨터가 대신 움직여요.')}
-$('#orStart').onclick=()=>{sendLoadout();send({t:'start'})};
-$('#orReady').onclick=()=>{const m=ON.room&&ON.room.slots.find(s=>s.uid===ON.you.id);sendLoadout();send({t:'ready',v:!(m&&m.ready)})};
+$('#orStart').onclick=()=>{if(ON.room&&ON.room.data==='eng'&&D.gold<ENG_FEE){needFee();return}sendLoadout();send({t:'start'})};
+$('#orReady').onclick=()=>{const m=ON.room&&ON.room.slots.find(s=>s.uid===ON.you.id);if(!(m&&m.ready)&&ON.room&&ON.room.data==='eng'&&D.gold<ENG_FEE){needFee();return}sendLoadout();send({t:'ready',v:!(m&&m.ready)})};
 
 window.__onBattle=function(m){switch(m.t){
   case 'b_round':onRound(m.info);break;

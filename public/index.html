@@ -250,6 +250,7 @@ table.res .n{text-align:right}
     </div>
     <div class="row" style="margin-top:18px"><button class="btn big green" id="bStart">전투 시작!</button></div>
     <div class="row" style="margin-top:14px">
+      <button class="btn orange claimBtn hidden" id="bClaim"></button>
       <button class="btn orange" id="bLobbyQuiz">📝 문제 풀고 골드 받기</button>
       <button class="btn" id="bVocab" style="background:#2f7fe0">📘 고1 영단어</button>
       <button class="btn" id="bShop">🛒 상점</button>
@@ -365,7 +366,7 @@ table.res .n{text-align:right}
       <div class="row" style="gap:16px"><div class="bigrank" id="fnRank">1등</div><div class="sub" id="fnSub"></div></div>
       <table class="res" id="fnTable" style="margin-top:10px"></table>
     </div>
-    <div class="row" style="margin-top:14px"><button class="btn green big" id="fnLobby">로비로</button></div>
+    <div class="row" style="margin-top:14px"><button class="btn orange big claimBtn hidden" id="fnClaim"></button><button class="btn green big" id="fnLobby">로비로</button></div>
   </div>
 </div>
 
@@ -421,7 +422,7 @@ const DEFAULT_DATA=()=>({gold:300,honor:0,up:{barrel:0,armor:0,engine:0},
   items:{repairS:1,repair:0,repairL:0,scope:1,double:0,shield:0,chute:1,tele:0,warp:1,spider:1,rope:2},
   stats:{games:0,wins:0,beat:0,kills:0,qRight:0,qTotal:0,made:0},
   qDay:'',qToday:0,madeDay:'',madeToday:0,
-  set:{anywhere:false,sound:true,music:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4,engSets:'all',engLv:0,wordTip:true},vocab:{},tut:{}});
+  set:{anywhere:false,sound:true,music:true,foes:4,diff:1,rounds:3,data:'phon',gugu:'all',map:'random',mode:'solo',teamSize:4,engSets:'all',engLv:0,wordTip:true},vocab:{},tut:{},lockGold:0});
 function merge(base,o){for(const k in o){const v=o[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&base[k]&&typeof base[k]==='object')merge(base[k],v);else base[k]=v}return base}
 let profiles=LS.get('gt_profiles',{});
 let me=null, D=null;
@@ -1137,7 +1138,8 @@ function newMatch(){
       players.push({name:'적 '+(i+1),isAI:true,team:1,color:TEAMCOL[1][i]})}}
   else{players=[{name:me,isAI:false,team:0,color:COLORS[0]}];for(let i=0;i<D.set.foes;i++)players.push({name:'컴퓨터 '+AINAMES[i],isAI:true,team:i+1,color:COLORS[i+1]})}
   players.forEach(p=>Object.assign(p,{points:0,kills:0,dmg:0}));
-  G={players,round:0,totalRounds:D.set.rounds,diff:D.set.diff,matchGold:0,quizGold:0,teamMode:D.set.mode==='team',teamWins:[0,0]};
+  G={players,round:0,totalRounds:D.set.rounds,diff:D.set.diff,matchGold:0,quizGold:0,teamMode:D.set.mode==='team',teamWins:[0,0],eng:D.set.data==='eng'};
+  if(G.eng){D.gold=Math.max(0,D.gold-ENG_FEE);saveNow();setTimeout(()=>toast(`📘 영단어 버전: 참가비 ${ENG_FEE}G를 냈어요. 보상은 경기가 끝나고 영단어 ${ENG_CLAIM}문제로 받아요`,3200),600)}
   document.body.classList.add('battle');
   startRound();
 }
@@ -1544,7 +1546,7 @@ function endRound(why){
     const rr=BAL.rankPerBeat*(n-myRank);if(rr>0)addGold(`${n}명 중 ${myRank}등 보상`,rr);
     const maxOther=Math.max(0,...G.tanks.filter(t=>t!==G.me).map(t=>t.roundKills));
     if(myRank===1&&G.me.roundKills>0&&G.me.roundKills>=maxOther){addGold('완벽 보상(처치+생존)',G.roundGoldTotal)}}
-  D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();
+  if(G.eng)D.lockGold=(D.lockGold||0)+G.roundGoldTotal;else D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();
   $('#hud').classList.add('hidden');
   // 화면
   $('#rdTitle').textContent=`라운드 ${G.round} / ${G.totalRounds} 결과`+(why==='time'?' (시간 종료)':'');
@@ -1554,7 +1556,8 @@ function endRound(why){
   html+='<tr><th>순위</th><th class="n">점수</th></tr>';if(G.teamMode){html+=`<tr><td>${TEAMNAME[G.winTeam]} 승리</td><td class="n">${TEAMNAME[0]} ${G.teamWins[0]} : ${G.teamWins[1]} ${TEAMNAME[1]}</td></tr>`;G.tanks.forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">[${TEAMNAME[t.team]}] ${escapeHtml(t.name)}${t.alive?'':' (격파)'}</td><td class="n">처치 ${t.roundKills}</td></tr>`)}
   else order.forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">${t.rank}. ${escapeHtml(t.name)}</td><td class="n">+${n-t.rank}점 (합계 ${t.p.points})</td></tr>`);
   $('#rdTable').innerHTML=html;
-  const db=$('#rdDouble');db.disabled=G.roundGoldTotal<=0;db.textContent=`📝 2문제 맞히고 보상 2배 (+${G.roundGoldTotal}G)`;db.classList.remove('hidden');
+  const db=$('#rdDouble');db.disabled=G.roundGoldTotal<=0;db.textContent=`📝 2문제 맞히고 보상 2배 (+${G.roundGoldTotal}G)`;db.classList.toggle('hidden',!!G.eng);
+  if(G.eng)$('#rdSub').innerHTML+=`<br>🔒 영단어 버전: 보상은 보관 중 (모두 <span class="goldtag">${D.lockGold}G</span>) — 경기가 끝나면 영단어 ${ENG_CLAIM}문제를 맞혀 받아요`;
   $('#rdNext').textContent=G.round>=G.totalRounds?'최종 결과 보기 ▶':'다음 라운드 ▶';
   showScreen('#sRound');
 }
@@ -1578,6 +1581,7 @@ function finalResult(){
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   ps.forEach((p,i)=>html+=`<tr><td class="${p.isAI?'':'me'}">${i+1}. ${escapeHtml(p.name)}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
   $('#fnTable').innerHTML=html;showScreen('#sFinal');
+  if(G.eng&&D.lockGold>0){$('#fnSub').innerHTML+=`<br>🔒 보관 중인 보상 <span class="goldtag">${D.lockGold}G</span> — 영단어 ${ENG_CLAIM}문제를 맞히면 받아요`;updClaim();setTimeout(claimLocked,900)}
 }
 $('#fnLobby').onclick=()=>{G=null;document.body.classList.remove('battle');openLobby()};
 
@@ -1945,7 +1949,7 @@ function renderLobby(){
   $('#lbStats').textContent=`경기 ${D.stats.games} · 우승 ${D.stats.wins} · 처치 ${D.stats.kills} · 정답 ${D.stats.qRight}/${D.stats.qTotal}`;
   chipRow($('#dataChips'),Object.keys(DATASETS).map(k=>{const S=studentQs(k,false).length;return [k,`${DATASETS[k].name} · ${DATASETS[k].who}`+(S?` · 학생 문제 ${S}`:'')]}),D.set.data,v=>{D.set.data=v;saveNow();renderLobby()});
   const mi=mixInfo(D.set.data);const tTxt=mi.T===Infinity?'자동 생성':mi.T+'개';
-  $('#mixInfo').textContent=`지금 섞이는 비율 — 선생님 문제 ${tTxt} : 학생 문제 ${mi.S}개 (학생 문제가 쌓일수록 선생님 문제가 줄어요)`;
+  $('#mixInfo').textContent=`지금 섞이는 비율 — 선생님 문제 ${tTxt} : 학생 문제 ${mi.S}개 (학생 문제가 쌓일수록 선생님 문제가 줄어요)`;if(D.set.data==='eng')$('#mixInfo').innerHTML=`📘 <b>영단어 버전</b>: 경기 참가비 ${ENG_FEE}G (지금 ${D.gold}G) · 전투 보상은 경기 후 영단어 ${ENG_CLAIM}문제를 맞혀야 받아요`;
   const gg=$('#guguChips');gg.classList.toggle('hidden',D.set.data!=='gugu');
   chipRow(gg,[['all','2~9단 섞어서'],...[2,3,4,5,6,7,8,9].map(n=>[n,n+'단'])],D.set.gugu,v=>{D.set.gugu=v;saveNow();renderLobby()});
   chipRow($('#modeChips'),[['solo','개인전'],['team','팀전 (최대 4인 1팀)']],D.set.mode,v=>{D.set.mode=v;saveNow();renderLobby()});
@@ -2009,10 +2013,19 @@ const TOURS={
     {el:'#hWind',text:'<b>바람</b> — 포탄이 바람 방향으로 밀려요. 화살표가 많을수록 세요.',endText:'싸우러 가요!'}]
 };
 function tutMaybe(key,force){if(!D)return;D.tut=D.tut||{};if(D.tut[key]&&!force)return;if(COACH)return;D.tut[key]=1;try{saveNow()}catch(e){}coach(TOURS[key]())}
-$('#bStart').onclick=()=>{ensureAudio();$('#mSupply').classList.remove('hidden')};
+$('#bStart').onclick=()=>{ensureAudio();if(D.set.data==='eng'&&D.gold<ENG_FEE){needFee();return}$('#mSupply').classList.remove('hidden')};
 $('#spQuiz').onclick=()=>{$('#mSupply').classList.add('hidden');openQuiz({title:'보급 받기',goal:3,earn:false,onDone:()=>{D.items.repairS++;D.items.scope++;saveNow();toast('보급 완료! 수리 키트 소 +1, 조준경 +1');newMatch()},onClose:ok=>{if(!ok&&!G){toast('보급 없이 출발!');newMatch()}}})};
 $('#spSkip').onclick=()=>{$('#mSupply').classList.add('hidden');newMatch()};
 $('#bLobbyQuiz').onclick=()=>openQuiz({title:'문제 풀고 골드 받기',earn:true});
+/* ---------- 영단어 버전 규칙: 참가비 100G · 경기 보상은 끝나고 영단어 2문제 ---------- */
+const ENG_FEE=100,ENG_CLAIM=2;
+function needFee(after){toast(`영단어 버전은 참가비 ${ENG_FEE}G가 필요해요. 지금 ${D.gold}G — 영단어 문제를 풀어 모아요!`,2800);
+  openQuiz({title:`📘 참가비 ${ENG_FEE}G 모으기 (지금 ${D.gold}G)`,earn:true,data:'eng',onClose:()=>{refreshGoldViews();if(D.gold>=ENG_FEE){toast('참가비가 모였어요! 이제 시작할 수 있어요',2200);after&&after()}}})}
+function claimLocked(){if(!D||!(D.lockGold>0))return;const g=D.lockGold;
+  openQuiz({title:`🔒 보상 ${g}G 받기 — 영단어 ${ENG_CLAIM}문제를 맞혀요`,goal:ENG_CLAIM,earn:false,data:'eng',onDone:()=>{const v=D.lockGold||0;D.gold+=v;D.lockGold=0;saveNow();sfx('coin');toast(`보상 ${v}G를 받았어요!`,2200);refreshGoldViews();updClaim()}})}
+function updClaim(){document.querySelectorAll('.claimBtn').forEach(b=>{const on=!!D&&D.lockGold>0;b.classList.toggle('hidden',!on);if(on)b.textContent=`🔒 받지 않은 보상 ${D.lockGold}G — 영단어 ${ENG_CLAIM}문제로 받기`})}
+setInterval(updClaim,1000);
+document.addEventListener('click',e=>{if(e.target&&e.target.classList&&e.target.classList.contains('claimBtn'))claimLocked()});
 /* ---------- 📘 고1 영단어 화면 ---------- */
 let vocabBack='#sLobby';
 function openVocab(back){vocabBack=back||'#sLobby';showScreen('#sVocab');$('#sVocab').scrollTop=0;renderVocab()}
@@ -2023,7 +2036,7 @@ function renderVocab(){if(!D)return;D.vocab=D.vocab||{};if(D.set.engSets===undef
   chipRow($('#vcSets'),[['all','전체 SET']].concat([1,2,3,4,5,6,7,8,9,10].map(n=>[n,'SET '+n])),D.set.engSets,v=>{D.set.engSets=v==='all'?'all':+v;saveNow();renderVocab()});
   chipRow($('#vcLv'),[[0,'모든 난이도'],[1,'하'],[2,'중'],[3,'상']],D.set.engLv,v=>{D.set.engLv=+v;saveNow();renderVocab()});
   const R=DATASETS.eng.reward;
-  $('#vcRule').innerHTML=`영단어 문제는 4지선다예요. 영어를 보고 뜻 고르기 / 뜻을 보고 영어 고르기가 섞여 나오고, 보기도 모두 이 목록 안의 단어예요.<br>정답 골드: 하 ${R[1]}G · 중 ${R[2]}G · 상 ${R[3]}G (다른 문제보다 적게 — 대신 문제가 빨리 넘어가요)`;
+  $('#vcRule').innerHTML=`영단어 문제는 4지선다예요. 영어를 보고 뜻 고르기 / 뜻을 보고 영어 고르기가 섞여 나오고, 보기도 모두 이 목록 안의 단어예요.<br>정답 골드: 하 ${R[1]}G · 중 ${R[2]}G · 상 ${R[3]}G (다른 문제보다 적게 — 대신 문제가 빨리 넘어가요)<br><b>영단어 버전 전투 규칙</b>: 전투 문제를 영단어로 하면 ① 경기 참가비 ${ENG_FEE}G ② 전투 보상은 경기가 끝난 뒤 영단어 ${ENG_CLAIM}문제를 맞혀야 받아요 (틀리면 맞힐 때까지 계속).`;
   $('#vcUse').textContent=D.set.data==='eng'?'⚔ 전투 중 문제: 영단어 (켜짐)':'⚔ 전투 중 문제를 영단어로 바꾸기';$('#vcUse').classList.toggle('on',D.set.data==='eng');
   $('#vcTip').textContent='📘 전투 중 단어 띠: '+(D.set.wordTip?'켜짐':'꺼짐');
   $('#vcWrong').textContent=`❗ 헷갈리는 단어 다시 (${conf})`;
@@ -2841,7 +2854,7 @@ const html=`
   </div>
   <div class="row" style="margin-top:10px">
     <button class="btn big green" id="olCreate">방 만들기</button>
-    <button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
+    <button class="btn orange claimBtn hidden" id="olClaim"></button><button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
     <button class="btn" id="olShop">🛒 상점</button><button class="btn" id="olUp">🔧 강화</button><button class="btn" id="olMake">✏️ 문제 만들기</button>
     <button class="btn ghost" id="olTut">❓ 처음 안내</button><button class="btn ghost" id="olOut">나가기</button>
   </div>
@@ -2878,6 +2891,7 @@ const html=`
     <button class="btn orange" id="orSupply">📝 보급 받기 (3문제)</button>
   </div>
   <div class="row" style="margin-top:8px">
+    <button class="btn orange claimBtn hidden" id="orClaim"></button>
     <button class="btn orange" id="orQuiz">📝 문제 풀고 골드</button>
     <button class="btn" id="orShop">🛒 상점</button>
     <button class="btn" id="orUp">🔧 강화</button>
@@ -3037,7 +3051,8 @@ const TE=window.TankEngine;
 const BT={pmap:new Map(),play:null,lastPos:0,posKey:'',fell:false,aiAim:null,myI:-1};
 const NAMEW=k=>(WEAPONS[k]||WEAPONS.basic).name;
 function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
-function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');toast('대전 시작!',1500)}
+function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');const r=m.room||ON.room;BT.eng=!!(r&&r.data==='eng');
+  if(BT.eng){D.gold=Math.max(0,D.gold-ENG_FEE);saveNow();toast(`📘 영단어 버전: 참가비 ${ENG_FEE}G를 냈어요. 보상은 경기가 끝나고 영단어 ${ENG_CLAIM}문제로 받아요`,3200)}else toast('대전 시작!',1500)}
 
 // 서버와 같은 맵을 만들고, 혼자 하기와 같은 색으로 칠한다
 function buildTerrain(world){
@@ -3062,6 +3077,7 @@ function mkTank(v,players){const p=players[v.i]||(players[v.i]={name:v.name,poin
 function setFromView(t,v){Object.assign(t,{x:v.x,y:v.y,tx:v.x,ty:v.y,hp:v.hp,alive:v.alive,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,isAI:v.isAI});if(t!==G.me||G.cur!==G.me)t.angle=v.angle;t.vx=0;t.vy=0;t.air=false}
 
 function onRound(info){
+  BT.eng=!!(ON.room&&ON.room.data==='eng');
   if(info.round===1)setTimeout(()=>{if(G&&G.online)tutMaybe('battle')},900);
   if(typeof QZ!=='undefined'&&QZ)closeQuiz();
   const world=TE.genWorld(info.seed,info.mapArg,info.tanks.length);buildTerrain(world);
@@ -3213,7 +3229,7 @@ function onItemRes(m){if(!G||!G.online)return;const t=G.tanks[m.i];if(!t)return;
 /* ---- 라운드 · 경기 끝 ---- */
 function onRoundEnd(m){if(!G||!G.online)return;finishPlay();G.state='over';aim=null;closeTray();
   const gold=m.gold[BT.myI]||{};G.roundGold=gold;G.roundGoldTotal=Object.values(gold).reduce((a,b)=>a+b,0);
-  D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();sendLoadout();
+  if(BT.eng)D.lockGold=(D.lockGold||0)+G.roundGoldTotal;else D.gold+=G.roundGoldTotal;G.matchGold+=G.roundGoldTotal;saveNow();sendLoadout();
   m.points.forEach((pt,i)=>{if(G.players[i])G.players[i].points=pt});G.teamWins=m.teamWins.slice();
   m.ranks.forEach(r=>{const t=G.tanks[r.i];t.rank=r.rank;t.roundKills=r.kills});
   const my=G.me.rank,n=G.tanks.length;$('#hud').classList.add('hidden');
@@ -3225,7 +3241,8 @@ function onRoundEnd(m){if(!G||!G.online)return;finishPlay();G.state='over';aim=n
   if(G.teamMode){html+=`<tr><td>${TEAMNAME[m.winTeam]} 승리</td><td class="n">${TEAMNAME[0]} ${G.teamWins[0]} : ${G.teamWins[1]} ${TEAMNAME[1]}</td></tr>`;G.tanks.forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">[${TEAMNAME[t.team]}] ${esc(t.name)}${t.alive?'':' (격파)'}</td><td class="n">처치 ${t.roundKills}</td></tr>`)}
   else G.tanks.slice().sort((a,b)=>a.rank-b.rank).forEach(t=>html+=`<tr><td class="${t===G.me?'me':''}">${t.rank}. ${esc(t.name)}</td><td class="n">+${n-t.rank}점 (합계 ${t.p.points})</td></tr>`);
   $('#rdTable').innerHTML=html;
-  const db=$('#rdDouble');db.disabled=G.roundGoldTotal<=0;db.textContent=`📝 2문제 맞히고 보상 2배 (+${G.roundGoldTotal}G)`;db.classList.remove('hidden');
+  const db=$('#rdDouble');db.disabled=G.roundGoldTotal<=0;db.textContent=`📝 2문제 맞히고 보상 2배 (+${G.roundGoldTotal}G)`;db.classList.toggle('hidden',!!BT.eng);
+  if(BT.eng)$('#rdSub').innerHTML+=`<br>🔒 영단어 버전: 보상은 보관 중 (모두 <span class="goldtag">${D.lockGold}G</span>) — 경기가 끝나면 영단어 ${ENG_CLAIM}문제를 맞혀 받아요`;
   const nx=$('#rdNext');nx.disabled=false;nx.textContent=m.round>=m.total?'최종 결과 보기 ▶':'다음 라운드 준비 ▶';
   BT.roundEndAt=Date.now();showScreen('#sRound');
 }
@@ -3242,7 +3259,7 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   $('#fnSub').innerHTML=`티어 ${tierBadge(after)}`+(chg?` (${before.name} → ${after.name})`:'')+`<br>최종 점수 ${before.r} → <b>${after.r}</b> (${RT&&RT.d>=0?'+':''}${RT?RT.d:0}) = 승률 점수 ${after.winPt} (승률 ${after.wr}% × 배점 ${after.weight}) + 플레이 점수 ${after.playPt}`+(after.rank?`<br>전체 ${after.of}명 중 ${after.rank}등 (상위 ${after.top}%)`:'')+`<br>이번 경기 골드 <span class="goldtag">${G.matchGold}G</span>`+(chg?(before.name==='첫 판 전'?`<br><span class="badge">첫 티어! ${after.name}</span>`:`<br><span class="badge">${up?'티어 상승!':'티어 하락…'} ${after.name}</span>`):'');
   let html='<tr><th>순위</th><th class="n">점수</th><th class="n">처치</th><th class="n">준 피해</th></tr>';
   st.forEach((p,i)=>html+=`<tr><td class="${p.uid===ON.you.id?'me':''}">${i+1}. ${G.teamMode?(p.team===0?'🔵 ':'🔴 '):''}${esc(p.name)}${p.ai&&p.uid?' (컴퓨터가 대신)':''}</td><td class="n">${p.points}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td></tr>`);
-  $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
+  $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';if(BT.eng&&D.lockGold>0){$('#fnSub').innerHTML+=`<br>🔒 보관 중인 보상 <span class="goldtag">${D.lockGold}G</span> — 영단어 ${ENG_CLAIM}문제를 맞히면 받아요`;updClaim();setTimeout(claimLocked,900)}
 }
 function backToRoom(){G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');$('#fnLobby').textContent='로비로';if(ON.room){showRoom();renderRoom()}else showOnLobby()}
 function onSync(m){if(!m.info)return;onRound(m.info);if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;
@@ -3256,8 +3273,8 @@ $('#rdNext').onclick=()=>{if(!(G&&G.online))return _rdNext();sendLoadout();send(
 $('#fnLobby').onclick=()=>{if(!(G&&G.online))return _fnLobby();backToRoom()};
 $('#mnQuit').onclick=()=>{if(!(G&&G.online))return _mnQuit();$('#mMenu').classList.add('hidden');if(!confirmQuit())return;send({t:'leave'});ON.room=null;G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');showOnLobby()};
 function confirmQuit(){return window.__gtNoConfirm||window.confirm('대전에서 나갈까요? 내 탱크는 컴퓨터가 대신 움직여요.')}
-$('#orStart').onclick=()=>{sendLoadout();send({t:'start'})};
-$('#orReady').onclick=()=>{const m=ON.room&&ON.room.slots.find(s=>s.uid===ON.you.id);sendLoadout();send({t:'ready',v:!(m&&m.ready)})};
+$('#orStart').onclick=()=>{if(ON.room&&ON.room.data==='eng'&&D.gold<ENG_FEE){needFee();return}sendLoadout();send({t:'start'})};
+$('#orReady').onclick=()=>{const m=ON.room&&ON.room.slots.find(s=>s.uid===ON.you.id);if(!(m&&m.ready)&&ON.room&&ON.room.data==='eng'&&D.gold<ENG_FEE){needFee();return}sendLoadout();send({t:'ready',v:!(m&&m.ready)})};
 
 window.__onBattle=function(m){switch(m.t){
   case 'b_round':onRound(m.info);break;
