@@ -1974,7 +1974,7 @@ function vcDraw(){const {v,shown}=VC;const s=D.vocab[v.w];
 $('#vcCard').onclick=()=>{VC=null;$('#vcCardBox').classList.remove('hidden');vcNext()};
 $('#vcCclose').onclick=()=>{$('#vcCardBox').classList.add('hidden');renderVocab()};
 // 전투 중 단어 띠: 차례가 바뀔 때마다 단어 하나 (헷갈리는 단어를 더 자주)
-function wordTipNext(){const el=$('#wordTip');if(!el)return;const on=D&&D.set.wordTip!==false&&(D.set.data==='eng'||Object.keys(D.vocab||{}).length>0);
+function wordTipNext(){const el=$('#wordTip');if(!el)return;const on=!!D&&D.set.wordTip!==false&&D.set.data==='eng';
   el.classList.toggle('hidden',!on);if(!on)return;const conf=VW.filter(v=>vConfused(v.w));const pool=conf.length&&Math.random()<0.6?conf:(vocabPool().length?vocabPool():VW);
   const v=pool[Math.floor(Math.random()*pool.length)];el.innerHTML=`📘 ${escapeHtml(v.w)} = ${escapeHtml(v.k)}<small>${vConfused(v.w)?'❗ 헷갈린 단어':'SET '+v.sets[0]+' · '+VLV[v.lv]}</small>`}
 $('#bShop').onclick=()=>{shopBack='#sLobby';openShop()};
