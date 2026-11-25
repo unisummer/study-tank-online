@@ -36,10 +36,14 @@ const html=`
 <div id="onChoose" class="card hidden">
   <div class="row" style="justify-content:space-between"><b>🌐 멀티 플레이 (친구들과 온라인)</b><button class="chip" id="bTitleBack2">← 처음으로</button></div>
   <div class="sub">친구들과 방을 만들어 대전해요. 온라인 골드·장비는 혼자 하기와 따로예요.</div>
-  <label class="f">이름</label><input class="inp" id="onName" maxlength="12" autocomplete="off">
-  <label class="f">내 비밀번호 (처음이면 지금 정하면 돼요)</label><input class="inp" id="onPw" type="password" maxlength="30" autocomplete="off">
-  <label class="f">반 코드 (수업 시간에만 · 선생님이 알려 준 코드)</label><input class="inp" id="onClass" maxlength="8" placeholder="없으면 비워 두세요" autocomplete="off" style="text-transform:uppercase">
+  <label class="f"><span class="gnum">1</span>학번과 이름</label><input class="inp" id="onName" maxlength="12" placeholder="예: 10305김공부" autocomplete="off">
+  <div class="guide"><span class="gnum">1</span>학번과 이름을 쓰세요. <small>예: 10305김공부 (띄어 쓰지 않아도 돼요)</small></div>
+  <label class="f"><span class="gnum">2</span>내 비밀번호</label><input class="inp" id="onPw" type="password" maxlength="30" placeholder="숫자나 글자 4개 이상" autocomplete="off">
+  <div class="guide warn"><span class="gnum">2</span>접속할 비밀번호를 넣어 주세요. <small>비밀번호를 잊으면 다시 접속할 수 없어요! 꼭 기억해 두세요.</small></div>
+  <label class="f"><span class="gnum">3</span>반 코드</label><input class="inp" id="onClass" maxlength="8" placeholder="없으면 비워 두세요" autocomplete="off" style="text-transform:uppercase">
+  <div class="guide"><span class="gnum">3</span>선생님이 알려 준 반 코드를 적어 주세요. <small>학급 활동이 아닌 경우에는 안 적어도 돼요. 반 코드를 적지 않으면 전체 공간에서 플레이하게 돼요.</small></div>
   <div class="row" style="margin-top:12px"><button class="btn big" id="onLogin" style="flex:1">온라인 입장</button></div>
+  <div class="guide"><span class="gnum">4</span>다 적었으면 「온라인 입장」! <small>처음이면 이 이름으로 계정이 새로 만들어지고, 다음부터는 같은 이름·비밀번호로 들어와요.</small></div>
   <div class="sub" id="onMsg" style="margin-top:8px;min-height:20px"></div>
 </div>
 <div id="sOnLobby" class="screen hidden"><div class="wrap">
@@ -51,7 +55,7 @@ const html=`
     <button class="btn big green" id="olCreate">방 만들기</button>
     <button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
     <button class="btn" id="olShop">🛒 상점</button><button class="btn" id="olUp">🔧 강화</button><button class="btn" id="olMake">✏️ 문제 만들기</button>
-    <button class="btn ghost" id="olOut">나가기</button>
+    <button class="btn ghost" id="olTut">❓ 처음 안내</button><button class="btn ghost" id="olOut">나가기</button>
   </div>
   <div class="on-col" style="margin-top:14px">
     <div><h3>방 목록</h3><div id="olRooms" style="display:flex;flex-direction:column;gap:8px"></div></div>
@@ -90,6 +94,7 @@ const html=`
     <button class="btn" id="orShop">🛒 상점</button>
     <button class="btn" id="orUp">🔧 강화</button>
     <button class="btn" id="orVocab" style="background:#2f7fe0">📘 고1 영단어</button>
+    <button class="btn ghost" id="orTut">❓ 처음 안내</button>
   </div>
   <div class="sub" id="orReadyInfo" style="margin-top:6px"></div>
   <div class="sub" id="orMsg" style="margin-top:8px;min-height:20px"></div>
@@ -166,7 +171,7 @@ function addChat(box,c){const el=$(box);const d=document.createElement('div');d.
 function addSys(box,t){const el=$(box);const d=document.createElement('div');d.className='sys';d.textContent='· '+t;el.appendChild(d);el.scrollTop=el.scrollHeight}
 
 /* ---------- 로비 ---------- */
-function showOnLobby(){if(ON.room){showRoom();return}showScreen('#sOnLobby');$('#sOnLobby').classList.remove('hidden');renderLobbyOn()}
+function showOnLobby(){if(ON.room){showRoom();return}showScreen('#sOnLobby');$('#sOnLobby').classList.remove('hidden');renderLobbyOn();setTimeout(()=>{if(!$('#sOnLobby').classList.contains('hidden'))tutMaybe('olobby')},1800)}
 ['#sOnLobby','#sOnRoom'].forEach(id=>SCREENS.push(id));
 function renderLobbyOn(){if(!D)return;
   const ri=rankOf(D.honor);
@@ -193,6 +198,7 @@ $('#orShop').onclick=()=>{roomUnready();shopBack='#sOnRoom';openShop()};
 $('#orUp').onclick=()=>{roomUnready();showScreen('#sUpgrade');renderUpgrade()};
 $('#orQuiz').onclick=()=>openQuiz({title:'문제 풀고 골드 받기',earn:true});
 $('#orVocab').onclick=()=>openVocab('#sOnRoom');
+$('#olTut').onclick=()=>tutMaybe('olobby',true);$('#orTut').onclick=()=>tutMaybe('room',true);
 $('#olShop').onclick=()=>{shopBack='#sOnLobby';openShop()};
 $('#olUp').onclick=()=>{showScreen('#sUpgrade');renderUpgrade()};
 $('#olMake').onclick=()=>{makeMode='screen';mkSet=D.set.data;showScreen('#sMake');renderMake()};
@@ -203,7 +209,7 @@ const shBack=$('#shBack').onclick;$('#shBack').onclick=()=>{if(window.ONLINE_MOD
 const rgv=window.refreshGoldViews;refreshGoldViews=function(){rgv();if(window.ONLINE_MODE&&D)$('#olGold').textContent=D.gold+'G'};
 
 /* ---------- 방 ---------- */
-function showRoom(){hideAllScreens();$('#sOnRoom').classList.remove('hidden')}
+function showRoom(){hideAllScreens();$('#sOnRoom').classList.remove('hidden');setTimeout(()=>{if(ON.room&&!$('#sOnRoom').classList.contains('hidden'))tutMaybe('room')},500)}
 function chipsTo(box,items,cur,cb,enabled){const el=$(box);el.innerHTML='';items.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+(String(v)===String(cur)?' on':'');b.textContent=l;b.disabled=!enabled;b.onclick=()=>cb(v);el.appendChild(b)})}
 function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);
   $('#orTitle').textContent=`${r.name} (#${r.id})`;
@@ -221,7 +227,7 @@ function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id
     d.className='on-slot'+(s.ready||s.uid===r.host?' ready':'')+(r.mode==='team'?' t'+s.team:'');
     d.innerHTML=`${s.tier&&!s.ai?tierBadge(s.tier)+' ':''}<b>${esc(s.name)}</b>${s.uid===r.host?'<span class="on-tag">방장</span>':''}${s.ai?'<span class="on-tag">컴퓨터</span>':''}${s.away?'<span class="on-tag">연결 끊김</span>':''}
       <div class="sub">${r.mode==='team'?(s.team===0?'🔵 파랑 팀':'🔴 빨강 팀'):''} ${s.ai?'':s.uid===r.host?'':s.ready?'준비 완료':'기다리는 중'}</div>`;
-    if(host&&!s.ai&&s.uid!==ON.you.id&&r.state==='wait'){const k=document.createElement('button');k.className='chip';k.textContent='내보내기';k.style.marginTop='4px';k.onclick=()=>send({t:'kick',uid:s.uid});d.appendChild(k)}
+    if(host&&!s.ai&&s.uid!==ON.you.id&&r.state==='wait'){const k=document.createElement('button');k.className='chip';k.textContent='내보내기';k.style.marginTop='4px';k.onclick=()=>send({t:'kick',uid:s.uid});d.appendChild(k);const h=document.createElement('button');h.className='chip';h.textContent='👑 방장 넘기기';h.style.margin='4px 0 0 4px';h.onclick=()=>{if(confirm(s.name+' 님에게 방장을 넘길까요?'))send({t:'host',uid:s.uid})};d.appendChild(h)}
     box.appendChild(d)}
   if(r.mode==='team'){[...box.children].sort((a,b)=>(a.classList.contains('t1')?1:0)-(b.classList.contains('t1')?1:0)).forEach(el=>box.appendChild(el))}
   const rd=$('#orReady');rd.classList.toggle('hidden',host);rd.textContent=mine&&mine.ready?'준비 취소':'준비';{const others=r.slots.filter(s=>!s.ai&&s.uid!==r.host),rn=others.filter(s=>s.ready).length;const ri=$('#orReadyInfo');if(ri)ri.innerHTML=r.state!=='wait'?'':(others.length?`준비 ${rn} / ${others.length}명`+(host?(rn===others.length?' · <b style="color:#5be38a">모두 준비 완료! 시작할 수 있어요</b>':' · 모두 준비하면 시작할 수 있어요'):(mine&&mine.ready?' · 방장이 시작하기를 기다려요':' · 상점·문제 풀기를 마치면 「준비」를 눌러요')):'')}
@@ -268,6 +274,7 @@ function mkTank(v,players){const p=players[v.i]||(players[v.i]={name:v.name,poin
 function setFromView(t,v){Object.assign(t,{x:v.x,y:v.y,tx:v.x,ty:v.y,hp:v.hp,alive:v.alive,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,isAI:v.isAI});if(t!==G.me||G.cur!==G.me)t.angle=v.angle;t.vx=0;t.vy=0;t.air=false}
 
 function onRound(info){
+  if(info.round===1)setTimeout(()=>{if(G&&G.online)tutMaybe('battle')},900);
   if(typeof QZ!=='undefined'&&QZ)closeQuiz();
   const world=TE.genWorld(info.seed,info.mapArg,info.tanks.length);buildTerrain(world);
   const players=G&&G.online&&G.players?G.players:[];

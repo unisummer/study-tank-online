@@ -204,6 +204,7 @@ function onMsg(c, info, raw) {
       pushRoom(r); return;
     }
     case 'clear_ai': if (r && r.host === info.uid && r.state === 'wait') { r.slots = r.slots.filter(s => !s.ai); pushRoom(r); } return;
+    case 'host': if (r && r.host === info.uid && r.state === 'wait') { const s = r.slots.find(s => s.uid === +m.uid && !s.ai && s.uid !== info.uid); if (s) { r.host = s.uid; s.ready = false; const me2 = r.slots.find(x => x.uid === info.uid); if (me2) me2.ready = false; pushRoom(r); bcRoom(r, { t: 'sys', text: `${info.name} 님이 ${s.name} 님에게 방장을 넘겼어요.` }); } } return;
     case 'kick': if (r && r.host === info.uid && r.state === 'wait') { const s = r.slots.find(s => s.uid === +m.uid && s.uid !== info.uid); if (s) { for (const [cc, ii] of conns) if (ii.uid === s.uid && ii.room === r.id) { ii.room = null; S(cc, { t: 'left', why: '방장이 내보냈어요.' }); } r.slots = r.slots.filter(x => x !== s); pushRoom(r); } } return;
     case 'start': {
       if (!r || r.host !== info.uid || r.state !== 'wait') return;
