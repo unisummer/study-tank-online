@@ -29,9 +29,10 @@ class Battle {
   loadout(uid) { return (this.room.loadouts && this.room.loadouts[uid]) || {}; }
 
   tankView(t) { return { i: t.i, uid: t.uid, name: t.name, team: t.team, isAI: t.isAI, color: t.color, x: Math.round(t.x), y: Math.round(t.y), hp: t.hp, hpMax: t.hpMax, alive: t.alive, angle: +t.angle.toFixed(3), shield: !!t.shield, rainbow: t.rainbow || 0, chute: !!t.chute, spider: !!t.spider, rot: +(t.rot || 0).toFixed(2), fuelMax: t.fuelMax, dmgMul: t.dmgMul, roundKills: t.roundKills || 0, tier: t.tier || null }; }
-  roundInfo() { return { mapArg: this.room.map, round: this.round, total: this.total, seed: this.seed, kind: this.world.kind, teamMode: this.teamMode, teamWins: this.teamWins, tanks: this.tanks.map(t => this.tankView(t)), crates: this.sim.crates.map(c => ({ id: c.id, x: c.x, y: c.y })), turnSec: this.turnSec, data: this.room.data, tw: this.sim.twView ? this.sim.twView() : [] }; }
+  roundInfo() { return { mapArg: this.room.map, round: this.round, total: this.total, seed: this.seed, kind: this.world.kind, teamMode: this.teamMode, teamWins: this.teamWins, tanks: this.tanks.map(t => this.tankView(t)), crates: this.sim.crates.map(c => ({ id: c.id, x: c.x, y: c.y })), turnSec: this.turnSec, data: this.room.data, tw: this.sim.twView ? this.sim.twView() : [], env: this.sim.envView() }; }
 
   startRound() {
+    this.envDone = false;
     this.round++; this.state = 'start';
     const n = this.players.length;
     this.seed = Math.floor(Math.random() * 1e9);
@@ -67,6 +68,15 @@ class Battle {
   nextTurn(first) {
     if (this.dead) return;
     if (this.aliveTeams().length <= 1) return this.endRound();
+    if (!this.envDone) { // 환경 요소 차례 (번개·운석·화산·밀물 …)
+      this.envDone = true; const r = this.sim.resolveEnv();
+      for (const e of r.ev) { if (e.e === 'boom') this.ops.push([e.dirt ? 1 : 0, e.x, e.y, e.r]); else if (e.e === 'fill') this.ops.push([2, e.x1, e.y1, e.x2, e.y2]); else if (e.e === 'clear') this.ops.push([3, e.x1, e.y1, e.x2, e.y2]); }
+      this.addGold(r.gold);
+      if (r.fired || r.ev.length) this.bc({ t: 'b_env', res: r, final: this.tanks.map(x => this.tankView(x)), env: this.sim.envView() });
+      if (r.fired) { this.state = 'resolve'; this.later(() => this.nextTurn(first), Math.round(r.dur * 1000) + 700); return; }
+      return this.nextTurn(first);
+    }
+    this.envDone = false;
     const n = this.tanks.length; let idx = this.turn; const extra = {};
     for (let k = 0; k < n; k++) {
       idx = (idx + 1) % n;
@@ -85,7 +95,7 @@ class Battle {
     const away = !t.isAI && !this.io.online(t.uid);
     const ms = t.isAI ? 0 : (away ? 4000 : this.turnSec * 1000);
     this.deadline = Date.now() + ms;
-    this.bc({ t: 'b_turn', i: idx, wind: +this.sim.wind.toFixed(2), ms, cycle: this.cycle, extra, tw: this.sim.twView ? this.sim.twView() : [], twNew: twN ? (twN.fire ? 2 : 1) : 0 });
+    this.bc({ t: 'b_turn', i: idx, wind: +this.sim.wind.toFixed(2), ms, cycle: this.cycle, extra, tw: this.sim.twView ? this.sim.twView() : [], twNew: twN ? (twN.fire ? 2 : 1) : 0, env: this.sim.envView() });
     if (t.isAI) this.later(() => this.aiAct(t), 900);
     else { const myRound = this.round, myTurn = this.turnId = (this.turnId || 0) + 1; this.later(() => { if (this.state === 'aim' && this.turn === idx && this.round === myRound && this.turnId === myTurn) { this.bc({ t: 'b_sys', text: `${t.name} 시간 끝!` }); this.nextTurn(); } }, ms + 300); }
     void p;
@@ -140,7 +150,7 @@ class Battle {
   checkNext() { if (this.state !== 'inter') return; const humans = this.players.filter(p => !p.ai && this.io.online(p.uid)); if (humans.every(p => this.next.has(p.uid))) this.goNext(); }
   goNext() { if (this.state !== 'inter') return; this.state = 'start'; this.next.clear(); if (this.round >= this.total) this.matchEnd(); else this.startRound(); }
   onAway(uid) { const p = this.players.find(p => p.uid === uid); if (!p || p.ai) return; p.away = Date.now(); this.later(() => { if (p.away && Date.now() - p.away >= AWAY_TO_AI - 100 && !this.io.online(uid)) this.toAI(p, '연결이 끊긴 지 60초가 지나 컴퓨터가 대신해요'); }, AWAY_TO_AI); this.checkNext(); }
-  onBack(uid, send) { const p = this.players.find(p => p.uid === uid); if (p) p.away = 0; send({ t: 'b_sync', info: this.tanks ? this.roundInfo() : null, ops: this.ops || [], turn: this.turn, state: this.state, ms: Math.max(0, (this.deadline || 0) - Date.now()), wind: this.sim ? this.sim.wind : 0, tw: this.sim && this.sim.twView ? this.sim.twView() : [], players: this.players.map(p => ({ name: p.name, team: p.team, uid: p.uid, ai: p.ai })) }); }
+  onBack(uid, send) { const p = this.players.find(p => p.uid === uid); if (p) p.away = 0; send({ t: 'b_sync', info: this.tanks ? this.roundInfo() : null, ops: this.ops || [], turn: this.turn, state: this.state, ms: Math.max(0, (this.deadline || 0) - Date.now()), wind: this.sim ? this.sim.wind : 0, tw: this.sim && this.sim.twView ? this.sim.twView() : [], env: this.sim && this.sim.envView ? this.sim.envView() : null, players: this.players.map(p => ({ name: p.name, team: p.team, uid: p.uid, ai: p.ai })) }); }
   toAI(p, why) { p.ai = true; const i = this.players.indexOf(p); if (this.tanks && this.tanks[i]) { this.tanks[i].isAI = true; this.tanks[i].ammo = AI_AMMO(); if (this.state === 'aim' && this.turn === i) this.later(() => this.aiAct(this.tanks[i]), 600); } this.bc({ t: 'b_sys', text: `${p.name}: ${why}` }); this.bc({ t: 'b_ai', i }); this.checkNext(); }
 
   /* ---- 라운드 · 경기 끝 ---- */

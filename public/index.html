@@ -622,7 +622,8 @@ const WEAPONS={
  death:{name:'분열 대폭탄',dmg:28,r:44,price:420,pack:1,desc:'꼭대기에서 11발로 갈라져 크게 폭발'},
  nuke:{name:'초대형 폭탄',dmg:90,r:430,price:520,pack:1,desc:'맵 가로의 1/3을 날려 버리는 폭발! 산 뒤에 숨으면 덜 다쳐요'},
  mirvc:{name:'분열 조각',dmg:20,r:26},deathc:{name:'대폭탄 조각',dmg:28,r:44},airb:{name:'폭격탄',dmg:20,r:30},napf:{name:'불덩이',dmg:9,r:16},
- tri2:{name:'2차 폭발',dmg:24,r:46},tri3:{name:'3차 폭발',dmg:26,r:60}
+ tri2:{name:'2차 폭발',dmg:24,r:46},tri3:{name:'3차 폭발',dmg:26,r:60},
+ bolt:{name:'번개',dmg:18,r:24},meteor:{name:'운석',dmg:26,r:44},lava:{name:'용암',dmg:14,r:22}
 };
 const WORDER=['basic','scatter','big','dig','roller','mirv','dirtS','dirt','dirtL','triple','leap','napalm','air','death','nuke'];
 const SUPER=['triple','leap','napalm','air','death','nuke','dirtL'];
@@ -791,6 +792,142 @@ function twisterStep(p, h, list, rand, onEvt) {
   }
   return false;
 }
+
+/* ===== 환경 요소 12종 (회오리 말고) — 혼자 하기·서버가 함께 씀 =====
+   C = {WW, WH, kind, R, wind, isSolid(x,y), spawn({x,y,vx,vy,w}), text(x,y,s,c,z), fill(x1,y1,x2,y2), clear(x1,y1,x2,y2)} */
+const ENV_INFO = { cloud: '⚡ 번개 구름', meteor: '☄️ 운석 경보', bridge: '🌈 무지개 다리', hole: '🌀 블랙홀', gust: '💨 돌풍 띠', crystal: '🪞 반사 수정',
+  tide: '🌊 밀물', volcano: '🌋 화산', ice: '🧊 빙판', balloon: '🎁 황금 풍선', qbox: '❓ 퀴즈 상자', boss: '👑 보스 비행선' };
+const ENV_ONE = ['tide', 'volcano', 'ice', 'boss'];   // 한 번에 하나만
+const ENV_PRIZES = ['air', 'triple', 'napalm', 'death', 'leap', 'nuke'];
+function envNew() { return { list: [], seq: 1, water: null }; }
+function envPool(kind) {
+  if (kind === 'wcave') return [['hole', 3], ['crystal', 3], ['gust', 2], ['qbox', 3], ['balloon', 2], ['tide', 2], ['bridge', 2]];
+  const p = [['cloud', 3], ['meteor', 2], ['bridge', 2], ['hole', 2], ['gust', 2], ['crystal', 2], ['balloon', 3], ['qbox', 3], ['boss', 1]];
+  if (!['hills', 'scorched', 'sphinx'].includes(kind)) p.push(['tide', 2]);
+  if (['hills', 'scorched', 'sphinx', 'canyon', 'grave', 'towers', 'sky'].includes(kind)) p.push(['volcano', 2], ['ice', 2]);
+  return p;
+}
+function envClamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function envSurf(C, x) { x = Math.round(x); for (let y = 0; y < C.WH; y++) if (C.isSolid(x, y)) return y; return C.WH; }
+// 하늘의 빈 자리 찾기 (주변 반지름 rr 안에 땅이 없는 곳)
+function envAir(C, rr, x0, x1, y0, y1) {
+  const R = C.R;
+  for (let k = 0; k < 40; k++) {
+    const x = Math.round(x0 + R() * (x1 - x0)), y = Math.round(y0 + R() * (y1 - y0)); let ok = true;
+    for (let a = 0; a < 12 && ok; a++) { const an = a / 12 * Math.PI * 2; if (C.isSolid(x + Math.cos(an) * rr, y + Math.sin(an) * rr) || C.isSolid(x + Math.cos(an) * rr * 0.5, y + Math.sin(an) * rr * 0.5)) ok = false; }
+    if (ok && !C.isSolid(x, y)) { let g = y; while (g < C.WH && !C.isSolid(x, g)) g++; if (g - y > 110 || C.kind === 'wcave') return { x, y }; }
+  }
+  return null;
+}
+function envMake(k, st, C) {
+  const R = C.R, rand = (a, b) => a + R() * (b - a), WW = C.WW, WH = C.WH, id = st.seq++;
+  switch (k) {
+    case 'cloud': return { t: k, id, x: Math.round(rand(200, WW - 200)), y: 70, vx: rand(-25, 25), cd: 3, life: 7 };
+    case 'meteor': return { t: k, id, x: Math.round(rand(300, WW - 300)), dir: R() < 0.5 ? -1 : 1, life: 2 };
+    case 'bridge': {
+      for (let tr = 0; tr < 40; tr++) {
+        const len = rand(320, 520), x1 = Math.round(rand(80, WW - 80 - len)), x2 = Math.round(x1 + len), y = Math.round(rand(WH * 0.18, WH * 0.75)); let ok = true;
+        for (let x = x1; x <= x2 && ok; x += 10) if (C.isSolid(x, y - 40) || C.isSolid(x, y) || C.isSolid(x, y + 14)) ok = false;
+        if (!ok) continue; let g = y; const mx = (x1 + x2) >> 1; while (g < WH && !C.isSolid(mx, g)) g++; if (g - y < 120 && C.kind !== 'wcave') continue;
+        return { t: k, id, x1, x2, y, th: 12, life: 2 };
+      }
+      return null;
+    }
+    case 'hole': {
+      const a = envAir(C, 40, WW * 0.08, WW * 0.45, 140, WH * 0.7), b = envAir(C, 40, WW * 0.55, WW * 0.92, 140, WH * 0.7);
+      if (!a || !b) return null; if (R() < 0.5) return { t: k, id, ax: a.x, ay: a.y, bx: b.x, by: b.y, life: 4 }; return { t: k, id, ax: b.x, ay: b.y, bx: a.x, by: a.y, life: 4 };
+    }
+    case 'gust': return { t: k, id, y: Math.round(rand(WH * 0.15, WH * 0.5)), hh: 45, dir: R() < 0.5 ? -1 : 1, pow: 750, life: 3 };
+    case 'crystal': { const a = envAir(C, 44, WW * 0.15, WW * 0.85, 140, WH * 0.7); return a ? { t: k, id, x: a.x, y: a.y, r: 30, hp: 3, life: 6 } : null; }
+    case 'tide': return { t: k, id, step: 34, life: 4, first: 1 };
+    case 'volcano': {
+      let bx = -1, by = WH; for (let x = 160; x < WW - 160; x += 16) { const y = envSurf(C, x); if (y < by) { by = y; bx = x; } }
+      if (bx < 0 || by > WH - 80) return null; return { t: k, id, x: bx, y: by, cd: 2, life: 6 };
+    }
+    case 'ice': { const len = rand(420, 720), x1 = Math.round(rand(60, WW - 60 - len)); return { t: k, id, x1, x2: Math.round(x1 + len), life: 6 }; }
+    case 'balloon': { const a = envAir(C, 36, 150, WW - 150, 130, WH * 0.55); return a ? { t: k, id, x: a.x, y: a.y, vx: rand(-20, 20), life: 5, prize: R() < 0.6 ? 'gold' : ENV_PRIZES[Math.floor(R() * ENV_PRIZES.length)] } : null; }
+    case 'qbox': { const a = envAir(C, 36, 150, WW - 150, 130, WH * 0.6); return a ? { t: k, id, x: a.x, y: a.y, life: 6 } : null; }
+    case 'boss': { const dir = R() < 0.5 ? -1 : 1; return { t: k, id, x: dir > 0 ? -120 : WW + 120, y: 120, dir, sp: Math.round(WW / 6), hp: 150, hpMax: 150, life: 99 }; }
+  }
+  return null;
+}
+function envAnchor(o) { // 글자를 띄울 자리
+  switch (o.t) { case 'bridge': return [(o.x1 + o.x2) / 2, o.y - 40]; case 'hole': return [o.ax, o.ay - 50]; case 'gust': return [0, o.y - 50]; case 'ice': return [(o.x1 + o.x2) / 2, 0];
+    case 'meteor': return [o.x, 140]; case 'tide': return [0, 0]; default: return [o.x, o.y - 60]; }
+}
+// 차례가 바뀔 때 한 번 — 환경 요소 움직이기·터뜨리기·새로 생기기. 포탄을 쏘면 true
+function envTurn(st, C, twCount) {
+  const R = C.R, rand = (a, b) => a + R() * (b - a), WW = C.WW, WH = C.WH; let fired = false;
+  const shoot = o => { C.spawn(o); fired = true; };
+  const cx = x => envClamp(x, 120, WW - 120);
+  for (const o of st.list) {
+    if (o.gone) continue; o.age = (o.age || 0) + 1;
+    switch (o.t) {
+      case 'cloud':
+        o.x = envClamp(o.x + (C.wind || 0) * 1.2 + o.vx, 80, WW - 80); o.cd--;
+        if (o.cd === 1) C.text(o.x, o.y + 70, '⚡ 다음 차례에 번개!', '#fff27a', 20);
+        if (o.cd <= 0) { o.cd = 3; shoot({ x: o.x + rand(-30, 30), y: o.y + 34, vx: 0, vy: 1400, w: 'bolt' }); C.text(o.x, o.y + 70, '⚡ 콰르릉!', '#fff27a', 26); }
+        break;
+      case 'meteor':
+        if (o.age >= 1) { const n = 3 + Math.floor(R() * 3); for (let i = 0; i < n; i++) shoot({ x: o.x + rand(-260, 260) - o.dir * 380, y: -80 - rand(0, 260), vx: o.dir * rand(170, 260), vy: rand(220, 360), w: 'meteor' });
+          C.text(cx(o.x), 150, '☄️ 운석이 떨어져요!', '#ffb38a', 26); o.life = 0; }
+        break;
+      case 'volcano':
+        o.cd--; if (o.cd === 1) C.text(o.x, o.y - 70, '🌋 화산이 꿈틀거려요…', '#ffb38a', 20);
+        if (o.cd <= 0) { o.cd = 2; const n = 6 + Math.floor(R() * 3); for (let i = 0; i < n; i++) shoot({ x: o.x + rand(-8, 8), y: o.y - 16, vx: rand(-330, 330), vy: rand(-820, -460), w: 'lava' }); C.text(o.x, o.y - 70, '🌋 펑! 화산 분출!', '#ff7a3d', 26); }
+        break;
+      case 'tide': { if (st.water == null) st.water = WH - 8; const lim = Math.round(WH * 0.55); if (st.water > lim) { st.water = Math.max(lim, st.water - o.step); C.text(cx(WW / 2), st.water - 60, o.first ? '🌊 밀물이 들어와요! 높은 곳으로!' : '🌊 물이 또 차올라요!', '#bfe9ff', 24); } o.first = 0; break; }
+      case 'balloon': o.x = envClamp(o.x + (C.wind || 0) * 0.9 + o.vx, 60, WW - 60); break;
+      case 'boss': o.x += o.dir * o.sp; if (o.x < -180 || o.x > WW + 180) { o.life = 0; C.text(cx(o.x), o.y + 60, '👑 보스 비행선이 떠났어요', '#ffe08a', 20); } break;
+    }
+    if (o.t !== 'boss') o.life--;
+  }
+  for (const o of st.list) if (!o.gone && o.life <= 0) { o.gone = true; if (o.t === 'bridge') C.clear(o.x1, o.y - 1, o.x2, o.y + o.th + 1); }
+  st.list = st.list.filter(o => !o.gone);
+  // 새 환경 요소
+  if (st.list.length + (twCount || 0) < 3 && R() < 0.25) {
+    const pool = envPool(C.kind).filter(([k]) => !(ENV_ONE.includes(k) && st.list.some(o => o.t === k)));
+    const tot = pool.reduce((a, b) => a + b[1], 0); let x = R() * tot, k = pool[0][0]; for (const [kk, wt] of pool) { x -= wt; if (x <= 0) { k = kk; break; } }
+    const o = envMake(k, st, C);
+    if (o) {
+      st.list.push(o); if (k === 'bridge') C.fill(o.x1, o.y, o.x2, o.y + o.th);
+      if (k === 'tide' && st.water == null) st.water = WH - 8;
+      const [ax, ay] = envAnchor(o); const msg = { cloud: '⚡ 번개 구름 등장! 3차례마다 번개', meteor: '☄️ 운석 경보! 다음 차례에 운석이 떨어져요', bridge: '🌈 무지개 다리! 2차례 뒤 사라져요', hole: '🌀 블랙홀 한 쌍! 들어간 포탄은 다른 구멍으로', gust: '💨 돌풍 띠! 이 높이를 지나는 포탄은 크게 밀려요', crystal: '🪞 반사 수정! 맞으면 포탄이 튕겨요 (3번)', tide: '🌊 밀물 시작! 물이 점점 차올라요', volcano: '🌋 화산 등장! 2차례마다 용암 분출', ice: '🧊 빙판! 미끄럽고 폭발에 잘 밀려요', balloon: '🎁 황금 풍선! 맞히면 큰 보상', qbox: '❓ 퀴즈 상자! 맞히고 문제를 풀면 강한 무기', boss: '👑 보스 비행선! 격추하면 500G' }[k];
+      C.text(ax || cx(WW / 2), Math.max(130, ay || 200), msg, '#ffffff', 22);
+    }
+  }
+  return fired;
+}
+// 포탄이 한 걸음 움직일 때: 0 없음, 1 그 자리에서 터짐, 2 튕김·순간이동, 3 물에 빠짐
+function envStep(p, h, st, on) {
+  if (!st) return 0;
+  if (p.envCd) p.envCd = Math.max(0, p.envCd - h);
+  for (const o of st.list) {
+    if (o.gone) continue;
+    switch (o.t) {
+      case 'gust': if (Math.abs(p.y - o.y) < o.hh) p.vx += o.dir * o.pow * h; break;
+      case 'hole': if (!p.envCd) { let dx = null, dy = null; if (Math.hypot(p.x - o.ax, p.y - o.ay) < 26) { dx = o.bx; dy = o.by; } else if (Math.hypot(p.x - o.bx, p.y - o.by) < 26) { dx = o.ax; dy = o.ay; }
+          if (dx !== null) { const sp = Math.hypot(p.vx, p.vy) || 1; p.x = dx + p.vx / sp * 30; p.y = dy + p.vy / sp * 30; p.envCd = 0.4; if (on) on('hole', o, p); return 2; } } break;
+      case 'crystal': { const ddx = p.x - o.x, ddy = p.y - o.y, d = Math.hypot(ddx, ddy);
+        if (d < o.r && !p.envCd) { const nx = ddx / (d || 1), ny = ddy / (d || 1), dot = p.vx * nx + p.vy * ny; if (dot < 0) { p.vx -= 2 * dot * nx; p.vy -= 2 * dot * ny; } p.x = o.x + nx * (o.r + 2); p.y = o.y + ny * (o.r + 2); p.envCd = 0.12; o.hp--; if (o.hp <= 0) o.gone = true; if (on) on(o.gone ? 'crack' : 'refl', o, p); return 2; } break; }
+      case 'balloon': case 'qbox': if (Math.hypot(p.x - o.x, p.y - o.y) < 26) return 1; break;
+      case 'boss': if (Math.abs(p.x - o.x) < 80 && Math.abs(p.y - o.y) < 30) return 1; break;
+    }
+  }
+  if (st.water != null && p.y > st.water + 6) return 3;
+  return 0;
+}
+// 폭발이 환경 요소에 닿았을 때 (풍선·퀴즈 상자·보스)
+function envBlast(st, x, y, r, dmg, owner, on) {
+  if (!st || !owner || owner.env) return;
+  for (const o of st.list) {
+    if (o.gone) continue;
+    if ((o.t === 'balloon' || o.t === 'qbox') && Math.hypot(o.x - x, o.y - y) < r + 26) { o.gone = true; on(o.t, o, owner); }
+    else if (o.t === 'boss') { const d = Math.hypot(o.x - x, o.y - y); if (d < r + 70) { const dd = Math.max(8, Math.round(dmg * (1 - Math.max(0, d - 40) / (r + 70) * 0.6))); o.hp -= dd; on('bossHit', o, owner, dd); if (o.hp <= 0) { o.gone = true; on('bossDown', o, owner); } } }
+  }
+}
+function envOnIce(st, t) { if (!st) return false; for (const o of st.list) if (o.t === 'ice' && !o.gone && t.x >= o.x1 && t.x <= o.x2) return true; return false; }
+function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water } : null; }
 /*EXTRA_MAPS_END*/
 function plank(c,x,y,w,h){c.fillStyle=MAT.plank;c.beginPath();c.roundRect(x,y,w,h,6);c.fill()}
 function genTerrain(th,kind,nTanks){
@@ -934,7 +1071,7 @@ function startRound(){
       shield:false,chute:false,spider:false,rot:0,roundKills:0,lastHit:null,deathOrder:0,
       ammo:isMe?null:Object.assign({scatter:1,big:1,dig:1,mirv:G.diff>=1?1:0,roller:1,dirtS:1,dirt:G.diff>=2?1:0},{[SUPER[Math.floor(Math.random()*SUPER.length)]]:G.diff>=1?1:0})}});
   G.me=G.tanks[0];
-  G.proj=[];G.delayed=[];G.crates=[];G.twisters=[];G.twSeq=1;G.flash=0;G.parts=[];G.texts=[];G.ghost=null;G.state='aim';G.turn=-1;G.cycle=1;G.maxCycles=12;G.deathSeq=0;
+  G.proj=[];G.delayed=[];G.crates=[];G.twisters=[];G.twSeq=1;G.env=envNew();G.envDone=false;G.envFirst=false;G.flash=0;G.parts=[];G.texts=[];G.ghost=null;G.state='aim';G.turn=-1;G.cycle=1;G.maxCycles=12;G.deathSeq=0;
   G.roundGold={};G.roundGoldTotal=0;G.doubled=false;G.revived=false;G.reviveAsked=false;G.weapon='basic';G.shake=0;G.panHold=0;G.endT=0;
   G.turnStart=Math.floor(Math.random()*n);G.turn=G.turnStart-1;
   hideAllScreens();$('#hud').classList.remove('hidden');
@@ -949,6 +1086,9 @@ const sameTeam=(a,b)=>a&&b&&a.team===b.team;
 function aliveTeams(){return [...new Set(aliveTanks().map(t=>t.team))]}
 function nextTurn(first){
   if(checkRoundEnd())return;
+  if(!G.envDone){G.envDone=true;G.proj=[];G.delayed=[];
+    if(envTurn(G.env,envCtx(),G.twisters.length)){G.state='envfly';G.flyT=0;G.envFirst=!!first;G.panHold=0;return}}
+  G.envDone=false;G.envFirst=false;
   const n=G.tanks.length;let idx=G.turn;
   for(let k=0;k<n;k++){idx=(idx+1)%n;if(idx===G.turnStart&&!first){G.cycle++;if(G.me.alive)addGold('생존',10);if(Math.random()<0.45)dropCrate();
       if(G.cycle>G.maxCycles){endRound('time');return}}
@@ -1001,6 +1141,7 @@ function updProj(p,dt){
   const sp=Math.hypot(p.vx,p.vy);const n=Math.max(1,Math.ceil(sp*dt/3));const h=dt/n;
   for(let i=0;i<n;i++){
     if(G.twisters&&G.twisters.length&&twisterStep(p,h,G.twisters,rand,twEvt)){p.age+=h;if(p.track&&(i%2===0))p.track.push(p.x,p.y);continue}
+    if(G.env&&(G.env.list.length||G.env.water!=null)){const er=envStep(p,h,G.env,envFx);if(er===1){explode(p);return}if(er===3){p.dead=true;splashFx(p.x,G.env.water);return}}
     const pvy=p.vy;p.vx+=G.wind*h;p.vy+=GRAV*h;p.x+=p.vx*h;p.y+=p.vy*h;p.age+=h;
     if(p.w==='mirv'&&pvy<0&&p.vy>=0){p.w='mirvc';[-2,-1,1,2].forEach(k=>G.proj.push({x:p.x,y:p.y,vx:p.vx+k*55,vy:p.vy,w:'mirvc',owner:p.owner,age:1,trail:[],mode:'fly'}));addText(p.x,p.y-20,'분열!','#fff',0.8,16)}
     if(p.w==='death'&&pvy<0&&p.vy>=0){p.w='deathc';for(let k=-5;k<=5;k++)if(k)G.proj.push({x:p.x,y:p.y,vx:p.vx+k*42,vy:p.vy+rand(-30,30),w:'deathc',owner:p.owner,age:1,trail:[],mode:'fly'});addText(p.x,p.y-30,'대분열!!','#ffd43b',1.2,26);G.shake=8}
@@ -1031,7 +1172,7 @@ function warpLand(p){p.dead=true;const o=p.owner;if(!o.alive)return;let x=clamp(
 function explode(p){
   if(p.warp){warpLand(p);return}
   p.dead=true;const W=WEAPONS[p.w];if(p.track&&p.owner===G.me)G.ghost=p.track;
-  hitCrates(p.x,p.y,W.r+24,p.owner);
+  if(!p.owner.env)hitCrates(p.x,p.y,W.r+24,p.owner);
   const sub=(w,o)=>Object.assign({x:p.x,y:p.y,vx:0,vy:0,w,owner:p.owner,age:1,trail:[],mode:'fly'},o);
   if(p.w==='triple'){G.delayed.push({t:0.35,p:sub('tri2')},{t:0.75,p:sub('tri3')})}
   if(p.w==='tri3')G.shake=20;
@@ -1049,7 +1190,9 @@ function explode(p){
   carve(p.x,p.y,W.r);addBoomSprite(p.x,p.y,W.r);G.shake=Math.max(G.shake||0,Math.min(p.w==='nuke'?30:18,W.r/3));sfx(W.r>50?'bigboom':'boom');
   for(let i=0;i<Math.round(W.r*0.9);i++){const a=rand(0,7),s=rand(40,320);G.parts.push({x:p.x,y:p.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,life:rand(0.4,0.9),max:0.9,size:rand(3,8),color:Math.random()<0.5?'#ffb347':'#ff6b3d',grav:300})}
   for(let i=0;i<14;i++)G.parts.push({x:p.x+rand(-W.r/2,W.r/2),y:p.y+rand(-W.r/2,W.r/2),vx:rand(-30,30),vy:rand(-60,-20),life:1.2,max:1.2,size:rand(8,16),color:'rgba(80,80,80,.5)',grav:-30});
-  for(const [t,dmg,cov] of hits){if(cov<0.8)addText(t.x,t.y-76,'엄폐! 피해 '+Math.round((1-cov)*100)+'% 줄임','#bfe2ff',1.4,14);hurt(t,dmg,p.owner)}
+  envBlast(G.env,p.x,p.y,W.r,W.dmg*(p.owner.dmgMul||1)*(p.dmgX||1),p.owner,envFx);
+  for(const [t,dmg,cov] of hits){if(cov<0.8)addText(t.x,t.y-76,'엄폐! 피해 '+Math.round((1-cov)*100)+'% 줄임','#bfe2ff',1.4,14);hurt(t,dmg,p.owner.env?null:p.owner);
+    if(t.alive&&envOnIce(G.env,t)){t.vx=(t.x>=p.x?1:-1)*240;t.vy=-170;t.air=true;t.peak=t.y;t.y-=2;addText(t.x,t.y-90,'🧊 미끄러져 날아감!','#cff4ff',1.2,16)}}
   if(p.w==='nuke'){for(let i=0;i<70;i++){const a=rand(Math.PI*1.1,Math.PI*1.9),sp=rand(80,420);G.parts.push({x:p.x+rand(-40,40),y:p.y,vx:Math.cos(a)*sp*0.5,vy:Math.sin(a)*sp,life:rand(1,2),max:2,size:rand(14,30),color:i%2?'rgba(255,170,60,.55)':'rgba(90,80,80,.5)',grav:-40})}}
   G.flyT=0;
 }
@@ -1079,6 +1222,79 @@ function drawTwisters(list){if(!list||!list.length)return;const now=performance.
     ctx.globalAlpha=1;
     if(t.fire){for(let i=0;i<6;i++){const k=((now*0.7+i/6)%1);const y=t.base-k*t.h;const r=8+k*t.w;ctx.fillStyle=i%2?'rgba(255,190,60,.8)':'rgba(255,90,40,.8)';ctx.beginPath();ctx.arc(t.x+Math.sin(now*6+i)*r,y,3+2*Math.random(),0,7);ctx.fill()}}
     ctx.font='800 16px system-ui';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';const lb=(t.fire?'🔥 불꽃 회오리':'🌪 회오리')+` (${t.life}턴)`;ctx.strokeText(lb,t.x,top-12);ctx.fillStyle=t.fire?'#ffb347':'#fff';ctx.fillText(lb,t.x,top-12)}}
+/* ---------- 환경 요소 12종 (번개 구름·운석·무지개 다리·블랙홀·돌풍·반사 수정·밀물·화산·빙판·황금 풍선·퀴즈 상자·보스) ---------- */
+const ENVO={env:true,name:'환경',dmgMul:1,alive:true,isAI:true,team:-99,x:0,y:0,p:{dmg:0,kills:0}};
+const RAINBOW=['#ff5a5f','#ffb400','#ffe066','#2ecc71','#3fa7ff','#b06bff'];
+function fillRectT(x1,y1,x2,y2){x1=Math.max(0,x1|0);x2=Math.min(WW-1,x2|0);y1=Math.max(0,y1|0);y2=Math.min(WH-1,y2|0);if(x2<x1||y2<y1)return;
+  for(let y=y1;y<=y2;y++)for(let x=x1;x<=x2;x++)solid[y*WW+x]=1;
+  const g=tctx.createLinearGradient(x1,0,x2,0);RAINBOW.forEach((c,i)=>g.addColorStop(i/(RAINBOW.length-1),c));tctx.fillStyle=g;tctx.fillRect(x1,y1,x2-x1+1,y2-y1+1);
+  tctx.fillStyle='rgba(255,255,255,.45)';tctx.fillRect(x1,y1,x2-x1+1,3);miniDirty=true}
+function clearRectT(x1,y1,x2,y2){x1=Math.max(0,x1|0);x2=Math.min(WW-1,x2|0);y1=Math.max(0,y1|0);y2=Math.min(WH-1,Math.min(bedrockY,WH)-1,y2|0);if(x2<x1||y2<y1)return;
+  for(let y=y1;y<=y2;y++)for(let x=x1;x<=x2;x++)solid[y*WW+x]=0;tctx.clearRect(x1,y1,x2-x1+1,y2-y1+1);miniDirty=true}
+function envCtx(){return{WW,WH,kind:mapKind,R:Math.random,wind:G.wind||0,isSolid,
+  spawn:o=>G.proj.push(Object.assign({owner:ENVO,age:0,trail:[],mode:'fly'},o)),
+  text:(x,y,s,c,z)=>addText(x,y,s,c,2.6,z),fill:fillRectT,clear:clearRectT}}
+function splashFx(x,y){for(let i=0;i<20;i++)G.parts.push({x,y,vx:rand(-130,130),vy:rand(-300,-110),life:0.8,max:0.8,size:rand(3,7),color:'#bfe9ff',grav:600})}
+function popFx(x,y,c){for(let i=0;i<26;i++){const a=rand(0,7),sp=rand(60,260);G.parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.7,max:0.7,size:rand(3,7),color:c,grav:200})}}
+function envPrizeName(k){return k==='gold'?'+200G':WEAPONS[k]?WEAPONS[k].name:k}
+// 퀴즈 상자를 맞힌 사람(나)에게: 문제 1개 → 맞히면 강한 무기
+function envQuizPrize(){const k=ENV_PRIZES[Math.floor(Math.random()*ENV_PRIZES.length)];
+  setTimeout(()=>{if(QZ)return;openQuiz({title:'❓ 퀴즈 상자 — 맞히면 '+WEAPONS[k].name+'!',goal:1,earn:false,onClose:ok=>{if(ok){D.ammo[k]=(D.ammo[k]||0)+1;saveNow();toast('정답! '+WEAPONS[k].name+' 1개를 받았어요',2400);sfx('coin')}else toast('아쉬워요! 다음 상자를 노려요',2000);updateHud()}})},900)}
+function envFx(k,o,a,b){
+  if(k==='hole'){addText(a.x,a.y-30,'🌀 쑥!','#d9b3ff',1,18);popFx(a.x,a.y,'#b06bff')}
+  else if(k==='refl'){addText(o.x,o.y-40,'🪞 팅!','#bff6ff',1,18);popFx(o.x,o.y,'#bff6ff');sfx('ok')}
+  else if(k==='crack'){addText(o.x,o.y-40,'🪞 수정이 깨졌어요!','#bff6ff',1.4,20);popFx(o.x,o.y,'#8fe9ff')}
+  else if(k==='balloon'){const t=a;popFx(o.x,o.y,'#ffd43b');sfx('coin');
+    if(t===G.me){if(o.prize==='gold')addGold('황금 풍선',200);else{D.ammo[o.prize]=(D.ammo[o.prize]||0)+1;saveNow()}}else if(t.ammo&&o.prize!=='gold')t.ammo[o.prize]=(t.ammo[o.prize]||0)+1;
+    addText(o.x,o.y-40,`🎁 ${t===G.me?'획득!':t.name+' 획득'} ${envPrizeName(o.prize)}`,'#ffd43b',2,20)}
+  else if(k==='qbox'){const t=a;popFx(o.x,o.y,'#c9a6ff');
+    if(t===G.me){addText(o.x,o.y-40,'❓ 퀴즈 상자 열림! 문제를 맞혀요','#e5d4ff',2,20);envQuizPrize()}
+    else{if(Math.random()<0.5&&t.ammo){const w=ENV_PRIZES[Math.floor(Math.random()*ENV_PRIZES.length)];t.ammo[w]=(t.ammo[w]||0)+1;addText(o.x,o.y-40,`❓ ${t.name} 정답! ${WEAPONS[w].name}`,'#e5d4ff',2,18)}else addText(o.x,o.y-40,`❓ ${t.name} 오답!`,'#e5d4ff',2,18)}}
+  else if(k==='bossHit')addText(o.x+rand(-20,20),o.y-30,'-'+b,'#ffb3b3',1,20);
+  else if(k==='bossDown'){const t=a;G.shake=18;popFx(o.x,o.y,'#ffd43b');popFx(o.x,o.y,'#ff6b3d');sfx('bigboom');addText(o.x,o.y-40,`👑 보스 격추! ${t===G.me?'+500G':t.name}`,'#ffe08a',2.4,28);if(t===G.me)addGold('보스 격추',500)}
+}
+// 빙판: 버튼을 떼도 조금 더 미끄러짐
+function iceIdle(t,dt){if(!t.iceV)return;if(t.air||!envOnIce(G.env,t)){t.iceV=0;return}
+  const nx=t.x+t.iceV*dt;let ny=t.y,c=0;while(isSolid(nx,ny)&&c<9){ny--;c++}
+  if(isSolid(nx,ny)||isSolid(nx,ny-20)){t.iceV=0;return}t.x=clamp(nx,12,WW-12);t.y=ny;let f=0;while(!isSolid(t.x,t.y+1)&&f<5){t.y++;f++}
+  t.iceV*=Math.max(0,1-1.4*dt);if(Math.abs(t.iceV)<10)t.iceV=0}
+function envLabel(x,y,txt,col){ctx.font='800 15px system-ui';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';ctx.strokeText(txt,x,y);ctx.fillStyle=col||'#fff';ctx.fillText(txt,x,y)}
+function drawEnv(st){if(!st||!st.list)return;const now=performance.now()/1000;
+  for(const o of st.list){if(o.gone)continue;
+    switch(o.t){
+    case 'cloud':{ctx.fillStyle=o.cd<=1?'#5b5f73':'#8a8fa3';for(const [dx,dy,r] of [[-50,6,30],[-15,-10,40],[25,-4,34],[55,8,26],[0,12,36]]){ctx.beginPath();ctx.arc(o.x+dx,o.y+dy,r,0,7);ctx.fill()}
+      if(o.cd<=1&&Math.sin(now*12)>0){ctx.strokeStyle='#fff27a';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(o.x-10,o.y+30);ctx.lineTo(o.x+6,o.y+52);ctx.lineTo(o.x-4,o.y+56);ctx.lineTo(o.x+12,o.y+80);ctx.stroke()}
+      envLabel(o.x,o.y-48,`⚡ 번개 구름 (${o.cd}차례 뒤)`,'#fff27a');break}
+    case 'meteor':{for(let i=0;i<3;i++){ctx.strokeStyle=`rgba(255,90,60,${0.5+0.3*Math.sin(now*6+i)})`;ctx.lineWidth=4;ctx.setLineDash([12,10]);const sx=o.x-o.dir*380;ctx.beginPath();ctx.moveTo(sx+(i-1)*200,60);ctx.lineTo(o.x+(i-1)*200,WH*0.6);ctx.stroke()}ctx.setLineDash([]);
+      envLabel(clamp(o.x,120,WW-120),110,'☄️ 운석 경보! 다음 차례','#ffb38a');break}
+    case 'bridge':envLabel((o.x1+o.x2)/2,o.y-14,`🌈 무지개 다리 (${o.life}차례)`,'#fff');break;
+    case 'hole':for(const [x,y,c] of [[o.ax,o.ay,'#b06bff'],[o.bx,o.by,'#ff8fd0']]){const g=ctx.createRadialGradient(x,y,2,x,y,34);g.addColorStop(0,'#000');g.addColorStop(0.6,'#1a0b2e');g.addColorStop(1,'rgba(30,10,60,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,34,0,7);ctx.fill();
+        ctx.strokeStyle=c;ctx.lineWidth=3;for(let i=0;i<3;i++){const a=now*4+i*2.1;ctx.beginPath();ctx.arc(x,y,20+i*5,a,a+2.2);ctx.stroke()}}
+      ctx.strokeStyle='rgba(200,160,255,.25)';ctx.setLineDash([6,10]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(o.ax,o.ay);ctx.lineTo(o.bx,o.by);ctx.stroke();ctx.setLineDash([]);
+      envLabel(o.ax,o.ay-44,`🌀 블랙홀 (${o.life})`,'#e5d4ff');envLabel(o.bx,o.by-44,'🌀 출구','#ffc4e8');break;
+    case 'gust':{ctx.fillStyle='rgba(220,240,255,.10)';ctx.fillRect(-200,o.y-o.hh,WW+400,o.hh*2);ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=2;
+      for(let i=0;i<26;i++){const k=(i*97.3)%1,y=o.y-o.hh+8+((i*37)%(o.hh*2-16));let x=((i*233+now*520*o.dir)%(WW+400)+WW+400)%(WW+400)-200;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-o.dir*(50+k*40),y);ctx.stroke()}
+      for(let x=200;x<WW;x+=900)envLabel(x,o.y-o.hh-8,`💨 돌풍 ${o.dir>0?'→→':'←←'} (${o.life})`,'#e8f4ff');break}
+    case 'crystal':{ctx.save();ctx.translate(o.x,o.y);ctx.rotate(Math.sin(now)*0.15);ctx.fillStyle='rgba(140,230,255,.75)';ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(0,-o.r-6);ctx.lineTo(o.r*0.8,0);ctx.lineTo(0,o.r+6);ctx.lineTo(-o.r*0.8,0);ctx.closePath();ctx.fill();ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.6)';ctx.beginPath();ctx.moveTo(-6,-o.r);ctx.lineTo(4,-6);ctx.lineTo(-10,-4);ctx.fill();ctx.restore();envLabel(o.x,o.y-o.r-16,`🪞 반사 수정 ${'◆'.repeat(Math.max(0,o.hp))}`,'#bff6ff');break}
+    case 'volcano':{const a=0.5+0.5*Math.sin(now*3);ctx.fillStyle=`rgba(255,90,20,${0.35+0.3*a})`;ctx.beginPath();ctx.arc(o.x,o.y,18+6*a,0,7);ctx.fill();
+      for(let i=0;i<5;i++){const k=(now*0.4+i/5)%1;ctx.fillStyle=`rgba(80,70,70,${0.45*(1-k)})`;ctx.beginPath();ctx.arc(o.x+Math.sin(i*2+now)*14*k,o.y-20-k*120,10+k*22,0,7);ctx.fill()}
+      envLabel(o.x,o.y-150,`🌋 화산 (${o.cd}차례 뒤 분출)`,'#ffb38a');break}
+    case 'ice':{ctx.fillStyle='rgba(200,240,255,.8)';for(let x=o.x1;x<o.x2;x+=6){let prev=false;for(let y=0;y<WH;y+=2){const sd=isSolid(x,y);if(sd&&!prev){ctx.fillRect(x,y-2,6,6);if((x-o.x1)%72<6){ctx.fillStyle='#fff';ctx.fillRect(x,y-1,14,2);ctx.fillStyle='rgba(200,240,255,.8)'}}prev=sd}}
+      envLabel((o.x1+o.x2)/2,surfTop((o.x1+o.x2)/2)-60,`🧊 빙판 (${o.life})`,'#cff4ff');break}
+    case 'balloon':{const by=o.y+Math.sin(now*2+o.id)*6;ctx.strokeStyle='rgba(80,60,20,.7)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(o.x,by+22);ctx.quadraticCurveTo(o.x+8,by+40,o.x,by+56);ctx.stroke();
+      const g=ctx.createRadialGradient(o.x-6,by-8,3,o.x,by,24);g.addColorStop(0,'#fff6c2');g.addColorStop(1,'#e8a800');ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(o.x,by,19,23,0,0,7);ctx.fill();ctx.strokeStyle='#a87400';ctx.lineWidth=2;ctx.stroke();
+      ctx.fillStyle='#a87400';ctx.font='900 15px system-ui';ctx.textAlign='center';ctx.fillText(o.prize==='gold'?'G':'★',o.x,by+5);envLabel(o.x,by-32,`🎁 ${envPrizeName(o.prize)} (${o.life})`,'#ffe08a');break}
+    case 'qbox':{const by=o.y+Math.sin(now*2.4+o.id)*7;ctx.save();ctx.translate(o.x,by);ctx.rotate(Math.sin(now*1.5)*0.12);ctx.fillStyle='#8f5bff';ctx.fillRect(-17,-17,34,34);ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.strokeRect(-17,-17,34,34);
+      ctx.fillStyle='#ffe066';ctx.font='900 24px system-ui';ctx.textAlign='center';ctx.fillText('?',0,9);ctx.restore();envLabel(o.x,by-30,`❓ 퀴즈 상자 (${o.life})`,'#e5d4ff');break}
+    case 'boss':{ctx.save();ctx.translate(o.x,o.y+Math.sin(now*1.6)*5);ctx.scale(o.dir,1);
+      ctx.fillStyle='#6b4ea0';ctx.beginPath();ctx.ellipse(0,0,80,28,0,0,7);ctx.fill();ctx.strokeStyle='#2d1f45';ctx.lineWidth=3;ctx.stroke();
+      ctx.fillStyle='#ffd43b';ctx.fillRect(-60,-3,120,6);ctx.fillStyle='#3a2a58';ctx.fillRect(-24,24,48,16);ctx.fillStyle='#bfe9ff';for(let i=-1;i<=1;i++)ctx.fillRect(-16+i*14+14,28,8,7);
+      ctx.fillStyle='#2d1f45';ctx.beginPath();ctx.moveTo(-78,0);ctx.lineTo(-100,-22);ctx.lineTo(-92,0);ctx.lineTo(-100,22);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#ffd43b';ctx.beginPath();ctx.moveTo(10,-28);ctx.lineTo(16,-44);ctx.lineTo(24,-34);ctx.lineTo(32,-46);ctx.lineTo(38,-28);ctx.closePath();ctx.fill();ctx.restore();
+      const w=120,r=Math.max(0,o.hp)/o.hpMax;ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(o.x-w/2,o.y-62,w,9);ctx.fillStyle=r>0.5?'#ff9f43':'#ff5a5f';ctx.fillRect(o.x-w/2,o.y-62,w*r,9);
+      envLabel(o.x,o.y-70,`👑 보스 비행선 ${Math.max(0,o.hp)}/${o.hpMax} · 격추 500G`,'#ffe08a');break}
+    }}}
 function drawCrates(){for(const c of G.crates){ctx.save();ctx.translate(c.x,c.y);
   if(!c.landed){ctx.strokeStyle='rgba(60,60,60,.7)';ctx.lineWidth=1;for(const k of[-14,14]){ctx.beginPath();ctx.moveTo(k*1.3,-58);ctx.lineTo(k*0.6,-22);ctx.stroke()}ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-58,24,Math.PI,0);ctx.fill()}
   ctx.fillStyle='#c98a3a';ctx.fillRect(-13,-24,26,24);ctx.strokeStyle='#7a4f1d';ctx.lineWidth=2.5;ctx.strokeRect(-13,-24,26,24);ctx.beginPath();ctx.moveTo(-13,-24);ctx.lineTo(13,0);ctx.moveTo(13,-24);ctx.lineTo(-13,0);ctx.stroke();
@@ -1117,6 +1333,7 @@ function spiderPhysics(t,dt){
   t.x=clamp(x,12,WW-12);t.y=y+10;return true}
 function tankPhysics(t,dt){
   if(!t.alive)return;
+  if(G&&G.env&&G.env.water!=null&&t.y>G.env.water+6){addText(t.x,G.env.water-40,'풍덩! 물에 잠겼어요','#bfe9ff',1.6,22);splashFx(t.x,G.env.water);killTank(t);return}
   if(t.rope){ropePhysics(t,dt);return}
   if(t.spider&&spiderPhysics(t,dt))return;
   // 흙에 묻혔으면 위로 빠져나오기
@@ -1153,7 +1370,7 @@ function moveTank(t,dir,dt){
       t.lastDir=dir;t.lastSense=t.crawlSense}
     tx*=t.crawlSense;ty*=t.crawlSense;t.crawlDir=dir;dir=1;
     const nx=t.x+tx*dir*62*dt,ny=t.y+ty*dir*62*dt;if(!solidNear(nx,ny-10,7)){t.x=clamp(nx,12,WW-12);t.y=ny}
-    t.fuel=Math.max(0,t.fuel-26*dt);const a=t.angle;if((dir>0&&Math.cos(a)<0)||(dir<0&&Math.cos(a)>0))t.angle=-Math.PI-a;return}const nx=t.x+dir*72*dt;let ny=t.y,c=0;
+    t.fuel=Math.max(0,t.fuel-26*dt);const a=t.angle;if((dir>0&&Math.cos(a)<0)||(dir<0&&Math.cos(a)>0))t.angle=-Math.PI-a;return}const ice=envOnIce(G.env,t);const nx=t.x+dir*72*(ice?1.7:1)*dt;if(ice)t.iceV=dir*150;let ny=t.y,c=0;
   while(isSolid(nx,ny)&&c<9){ny--;c++}
   if(isSolid(nx,ny)||isSolid(nx,ny-20)){return}
   t.x=clamp(nx,12,WW-12);t.y=ny;let f=0;while(!isSolid(t.x,t.y+1)&&f<5){t.y++;f++}
@@ -1523,18 +1740,21 @@ function render(){
   const s=sc();const shx=G&&G.shake?rand(-G.shake,G.shake):0,shy=G&&G.shake?rand(-G.shake,G.shake):0;
   ctx.save();ctx.translate(cw/2,ch/2);ctx.scale(s,s);ctx.translate(-cam.x+shx,-cam.y+shy);
   { // 맨 아래 물 (빠지면 탈락) — 출렁이는 물결
-    const wt=performance.now()/1000,wy=WH-8;const g=ctx.createLinearGradient(0,wy-20,0,wy+500);g.addColorStop(0,'#3aa0e0');g.addColorStop(0.25,'#1f6fb2');g.addColorStop(1,'#0d2f57');
+    const wt=performance.now()/1000,wy=G&&G.env&&G.env.water!=null?G.env.water:WH-8;const g=ctx.createLinearGradient(0,wy-20,0,wy+500);g.addColorStop(0,'#3aa0e0');g.addColorStop(0.25,'#1f6fb2');g.addColorStop(1,'#0d2f57');
     ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(-3000,wy+600);for(let x=-3000;x<=WW+3000;x+=40)ctx.lineTo(x,wy-6+Math.sin(x/90+wt*1.6)*6+Math.sin(x/37-wt*2.3)*2);ctx.lineTo(WW+3000,wy+600);ctx.closePath();ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=3;ctx.beginPath();for(let x=-3000;x<=WW+3000;x+=40){const y=wy-6+Math.sin(x/90+wt*1.6)*6+Math.sin(x/37-wt*2.3)*2;x===-3000?ctx.moveTo(x,y):ctx.lineTo(x,y)}ctx.stroke();
     ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=2;for(let k=1;k<4;k++){ctx.beginPath();for(let x=-3000;x<=WW+3000;x+=60){const y=wy+k*40+Math.sin(x/120+wt*(1+k*0.3)+k)*4;x===-3000?ctx.moveTo(x,y):ctx.lineTo(x,y)}ctx.stroke()}}
   ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(-3000,-2000,3000,WH+3000);ctx.fillRect(WW,-2000,3000,WH+3000);
   ctx.drawImage(terrain,0,0);
+  if(G&&G.env&&G.env.water!=null&&G.env.water<WH-10){ctx.fillStyle='rgba(30,110,190,.38)';ctx.fillRect(-3000,G.env.water,WW+6000,WH-G.env.water+600)}
   if(G&&G.tanks){
     if(G.ghost&&G.ghost.length>3){ctx.strokeStyle='rgba(255,255,255,.35)';ctx.setLineDash([6,8]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(G.ghost[0],G.ghost[1]);for(let i=2;i<G.ghost.length;i+=2)ctx.lineTo(G.ghost[i],G.ghost[i+1]);ctx.stroke();ctx.setLineDash([])}
-    drawTwisters(G.twisters);drawCrates();
+    drawTwisters(G.twisters);drawEnv(G.env);drawCrates();
     drawRopes();G.tanks.forEach(drawTank);
     for(const p of G.proj)if(p.w==='napf'){ctx.fillStyle='rgba(255,140,0,.35)';ctx.beginPath();ctx.arc(p.x,p.y-2,11+Math.sin(performance.now()/60+p.x)*3,0,7);ctx.fill()}
     for(const p of G.proj){ctx.strokeStyle=p.w==='napf'?'rgba(255,120,0,.7)':'rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<p.trail.length;i+=2){i?ctx.lineTo(p.trail[i],p.trail[i+1]):ctx.moveTo(p.trail[i],p.trail[i+1])}ctx.stroke();
+      if(p.w==='bolt'){ctx.strokeStyle='#fff27a';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(p.x,p.y);let yy=p.y;for(let k=0;k<6;k++){yy-=26;ctx.lineTo(p.x+(k%2?12:-12),yy)}ctx.stroke();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();continue}
+      if(p.w==='meteor'||p.w==='lava'){const r=p.w==='meteor'?11:7;const g=ctx.createRadialGradient(p.x,p.y,1,p.x,p.y,r*2.2);g.addColorStop(0,'#fff2b0');g.addColorStop(0.4,'#ff8a2a');g.addColorStop(1,'rgba(255,60,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,r*2.2,0,7);ctx.fill();ctx.fillStyle=p.w==='meteor'?'#5a3a2a':'#ff5a1a';ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);ctx.fill();continue}
       const W=WEAPONS[p.w]||{};const si=shellIdx(p.w);if(p.dmgX>1){ctx.fillStyle='rgba(255,120,30,.45)';ctx.beginPath();ctx.arc(p.x,p.y,14+Math.sin(performance.now()/50)*3,0,7);ctx.fill()}
       if(si>=0&&sprOk(SPR.shell[si])){const im=SPR.shell[si];const tl=p.trail.length;let ang=0;if(tl>=4)ang=Math.atan2(p.y-p.trail[tl-3],p.x-p.trail[tl-4]);else if(p.vx||p.vy)ang=Math.atan2(p.vy,p.vx);
         const L=[13,20,24,34][si],H=L*im.naturalHeight/im.naturalWidth;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(si?ang:0);ctx.drawImage(im,-L*0.6,-H/2,L,H);ctx.restore();continue}
@@ -1570,7 +1790,7 @@ function loop(now){
     for(const t of G.tanks)tankPhysics(t,dt);
     updCrates(dt);G.flash=Math.max(0,(G.flash||0)-dt);
     if(G.state==='aim'){const t=G.cur;
-      if(t===G.me){if(moveDir&&!aim&&!QZ)moveTank(t,moveDir,dt);else{t.crawlDir=0;t.crawlSense=0}if(!QZ&&$('#mMenu').classList.contains('hidden'))G.timer-=dt;if(G.timer<=0){toast('시간 끝! 다음 차례');G.state='settle';G.settleT=0;G.shots=0}
+      if(t===G.me){if(moveDir&&!aim&&!QZ)moveTank(t,moveDir,dt);else{t.crawlDir=0;t.crawlSense=0;iceIdle(t,dt)}if(!QZ&&$('#mMenu').classList.contains('hidden'))G.timer-=dt;if(G.timer<=0){toast('시간 끝! 다음 차례');G.state='settle';G.settleT=0;G.shots=0}
         const fb=$('#fuelBar');fb.style.width=(t.fuel/t.fuelMax*100)+'%';const tm=$('#hTimer');if(tm)tm.textContent=Math.max(0,Math.ceil(G.timer))}
       else aiUpdate(t,dt);
       if(!t.alive){G.state='settle';G.settleT=0;G.shots=0}}
@@ -1578,8 +1798,10 @@ function loop(now){
       for(const d of G.delayed){d.t-=dt;if(d.t<=0){d.done=true;const q=d.p;if(['tri2','tri3'].includes(q.w))explode(q);else G.proj.push(q)}}
       G.delayed=G.delayed.filter(d=>!d.done);
       for(const p of G.proj)if(!p.dead)updProj(p,dt);G.proj=G.proj.filter(p=>!p.dead);G.flyT+=dt;if(!G.proj.length&&!G.second&&!G.delayed.length&&G.flyT>0.5){G.state='settle';G.settleT=0}}
+    else if(G.state==='envfly'){for(const d of G.delayed){d.t-=dt;if(d.t<=0){d.done=true;const q=d.p;if(['tri2','tri3'].includes(q.w))explode(q);else G.proj.push(q)}}G.delayed=G.delayed.filter(d=>!d.done);
+      for(const p of G.proj)if(!p.dead)updProj(p,dt);G.proj=G.proj.filter(p=>!p.dead);G.flyT+=dt;if(!G.proj.length&&!G.delayed.length&&G.flyT>0.5){G.state='settle';G.settleT=0;G.envSettle=true}}
     else if(G.state==='settle'){G.settleT+=dt;const moving=G.tanks.some(t=>t.alive&&t.air);
-      if((!moving&&G.settleT>0.3)||G.settleT>2.5){if(!checkRoundEnd())nextTurn()}}
+      if((!moving&&G.settleT>0.3)||G.settleT>2.5){const f=G.envSettle&&G.envFirst;G.envSettle=false;if(!checkRoundEnd())nextTurn(f)}}
     else if(G.state==='ending'){G.endT-=dt;if(G.endT<=0)endRound()}
     else if(G.state==='reviveWait'){G.endT-=dt;if(G.endT<=0)askRevive()}
     // 입자 · 글자
@@ -1588,7 +1810,7 @@ function loop(now){
     G.shake=Math.max(0,(G.shake||0)-dt*40);
     // 카메라 따라가기
     if(G.panHold>0)G.panHold-=dt;else{let tx=G.cur?G.cur.x:cam.x,ty=G.cur?G.cur.y-120:cam.y;
-      if(G.state==='fly'&&G.proj.length){tx=G.proj[0].x;ty=G.proj[0].y}
+      if((G.state==='fly'||G.state==='envfly')&&G.proj.length){tx=G.proj[0].x;ty=Math.max(G.proj[0].y,150)}
       camFollow(dt,tx,ty)}
     clampCam();
     if(Math.floor(now/250)!==Math.floor((now-dt*1000)/250))updateHud();
@@ -1755,6 +1977,7 @@ const WSTAT = {
   dirtL: { dmg: 0, r: 105, dirt: 1 }, triple: { dmg: 24, r: 34 }, leap: { dmg: 22, r: 30 }, napalm: { dmg: 9, r: 16 },
   air: { dmg: 20, r: 30 }, death: { dmg: 28, r: 44 }, nuke: { dmg: 90, r: 430 }, mirvc: { dmg: 20, r: 26 },
   deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
+  bolt: { dmg: 18, r: 24 }, meteor: { dmg: 26, r: 44 }, lava: { dmg: 14, r: 22 },
 };
 const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
 const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
@@ -1877,6 +2100,142 @@ function twisterStep(p, h, list, rand, onEvt) {
   }
   return false;
 }
+
+/* ===== 환경 요소 12종 (회오리 말고) — 혼자 하기·서버가 함께 씀 =====
+   C = {WW, WH, kind, R, wind, isSolid(x,y), spawn({x,y,vx,vy,w}), text(x,y,s,c,z), fill(x1,y1,x2,y2), clear(x1,y1,x2,y2)} */
+const ENV_INFO = { cloud: '⚡ 번개 구름', meteor: '☄️ 운석 경보', bridge: '🌈 무지개 다리', hole: '🌀 블랙홀', gust: '💨 돌풍 띠', crystal: '🪞 반사 수정',
+  tide: '🌊 밀물', volcano: '🌋 화산', ice: '🧊 빙판', balloon: '🎁 황금 풍선', qbox: '❓ 퀴즈 상자', boss: '👑 보스 비행선' };
+const ENV_ONE = ['tide', 'volcano', 'ice', 'boss'];   // 한 번에 하나만
+const ENV_PRIZES = ['air', 'triple', 'napalm', 'death', 'leap', 'nuke'];
+function envNew() { return { list: [], seq: 1, water: null }; }
+function envPool(kind) {
+  if (kind === 'wcave') return [['hole', 3], ['crystal', 3], ['gust', 2], ['qbox', 3], ['balloon', 2], ['tide', 2], ['bridge', 2]];
+  const p = [['cloud', 3], ['meteor', 2], ['bridge', 2], ['hole', 2], ['gust', 2], ['crystal', 2], ['balloon', 3], ['qbox', 3], ['boss', 1]];
+  if (!['hills', 'scorched', 'sphinx'].includes(kind)) p.push(['tide', 2]);
+  if (['hills', 'scorched', 'sphinx', 'canyon', 'grave', 'towers', 'sky'].includes(kind)) p.push(['volcano', 2], ['ice', 2]);
+  return p;
+}
+function envClamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function envSurf(C, x) { x = Math.round(x); for (let y = 0; y < C.WH; y++) if (C.isSolid(x, y)) return y; return C.WH; }
+// 하늘의 빈 자리 찾기 (주변 반지름 rr 안에 땅이 없는 곳)
+function envAir(C, rr, x0, x1, y0, y1) {
+  const R = C.R;
+  for (let k = 0; k < 40; k++) {
+    const x = Math.round(x0 + R() * (x1 - x0)), y = Math.round(y0 + R() * (y1 - y0)); let ok = true;
+    for (let a = 0; a < 12 && ok; a++) { const an = a / 12 * Math.PI * 2; if (C.isSolid(x + Math.cos(an) * rr, y + Math.sin(an) * rr) || C.isSolid(x + Math.cos(an) * rr * 0.5, y + Math.sin(an) * rr * 0.5)) ok = false; }
+    if (ok && !C.isSolid(x, y)) { let g = y; while (g < C.WH && !C.isSolid(x, g)) g++; if (g - y > 110 || C.kind === 'wcave') return { x, y }; }
+  }
+  return null;
+}
+function envMake(k, st, C) {
+  const R = C.R, rand = (a, b) => a + R() * (b - a), WW = C.WW, WH = C.WH, id = st.seq++;
+  switch (k) {
+    case 'cloud': return { t: k, id, x: Math.round(rand(200, WW - 200)), y: 70, vx: rand(-25, 25), cd: 3, life: 7 };
+    case 'meteor': return { t: k, id, x: Math.round(rand(300, WW - 300)), dir: R() < 0.5 ? -1 : 1, life: 2 };
+    case 'bridge': {
+      for (let tr = 0; tr < 40; tr++) {
+        const len = rand(320, 520), x1 = Math.round(rand(80, WW - 80 - len)), x2 = Math.round(x1 + len), y = Math.round(rand(WH * 0.18, WH * 0.75)); let ok = true;
+        for (let x = x1; x <= x2 && ok; x += 10) if (C.isSolid(x, y - 40) || C.isSolid(x, y) || C.isSolid(x, y + 14)) ok = false;
+        if (!ok) continue; let g = y; const mx = (x1 + x2) >> 1; while (g < WH && !C.isSolid(mx, g)) g++; if (g - y < 120 && C.kind !== 'wcave') continue;
+        return { t: k, id, x1, x2, y, th: 12, life: 2 };
+      }
+      return null;
+    }
+    case 'hole': {
+      const a = envAir(C, 40, WW * 0.08, WW * 0.45, 140, WH * 0.7), b = envAir(C, 40, WW * 0.55, WW * 0.92, 140, WH * 0.7);
+      if (!a || !b) return null; if (R() < 0.5) return { t: k, id, ax: a.x, ay: a.y, bx: b.x, by: b.y, life: 4 }; return { t: k, id, ax: b.x, ay: b.y, bx: a.x, by: a.y, life: 4 };
+    }
+    case 'gust': return { t: k, id, y: Math.round(rand(WH * 0.15, WH * 0.5)), hh: 45, dir: R() < 0.5 ? -1 : 1, pow: 750, life: 3 };
+    case 'crystal': { const a = envAir(C, 44, WW * 0.15, WW * 0.85, 140, WH * 0.7); return a ? { t: k, id, x: a.x, y: a.y, r: 30, hp: 3, life: 6 } : null; }
+    case 'tide': return { t: k, id, step: 34, life: 4, first: 1 };
+    case 'volcano': {
+      let bx = -1, by = WH; for (let x = 160; x < WW - 160; x += 16) { const y = envSurf(C, x); if (y < by) { by = y; bx = x; } }
+      if (bx < 0 || by > WH - 80) return null; return { t: k, id, x: bx, y: by, cd: 2, life: 6 };
+    }
+    case 'ice': { const len = rand(420, 720), x1 = Math.round(rand(60, WW - 60 - len)); return { t: k, id, x1, x2: Math.round(x1 + len), life: 6 }; }
+    case 'balloon': { const a = envAir(C, 36, 150, WW - 150, 130, WH * 0.55); return a ? { t: k, id, x: a.x, y: a.y, vx: rand(-20, 20), life: 5, prize: R() < 0.6 ? 'gold' : ENV_PRIZES[Math.floor(R() * ENV_PRIZES.length)] } : null; }
+    case 'qbox': { const a = envAir(C, 36, 150, WW - 150, 130, WH * 0.6); return a ? { t: k, id, x: a.x, y: a.y, life: 6 } : null; }
+    case 'boss': { const dir = R() < 0.5 ? -1 : 1; return { t: k, id, x: dir > 0 ? -120 : WW + 120, y: 120, dir, sp: Math.round(WW / 6), hp: 150, hpMax: 150, life: 99 }; }
+  }
+  return null;
+}
+function envAnchor(o) { // 글자를 띄울 자리
+  switch (o.t) { case 'bridge': return [(o.x1 + o.x2) / 2, o.y - 40]; case 'hole': return [o.ax, o.ay - 50]; case 'gust': return [0, o.y - 50]; case 'ice': return [(o.x1 + o.x2) / 2, 0];
+    case 'meteor': return [o.x, 140]; case 'tide': return [0, 0]; default: return [o.x, o.y - 60]; }
+}
+// 차례가 바뀔 때 한 번 — 환경 요소 움직이기·터뜨리기·새로 생기기. 포탄을 쏘면 true
+function envTurn(st, C, twCount) {
+  const R = C.R, rand = (a, b) => a + R() * (b - a), WW = C.WW, WH = C.WH; let fired = false;
+  const shoot = o => { C.spawn(o); fired = true; };
+  const cx = x => envClamp(x, 120, WW - 120);
+  for (const o of st.list) {
+    if (o.gone) continue; o.age = (o.age || 0) + 1;
+    switch (o.t) {
+      case 'cloud':
+        o.x = envClamp(o.x + (C.wind || 0) * 1.2 + o.vx, 80, WW - 80); o.cd--;
+        if (o.cd === 1) C.text(o.x, o.y + 70, '⚡ 다음 차례에 번개!', '#fff27a', 20);
+        if (o.cd <= 0) { o.cd = 3; shoot({ x: o.x + rand(-30, 30), y: o.y + 34, vx: 0, vy: 1400, w: 'bolt' }); C.text(o.x, o.y + 70, '⚡ 콰르릉!', '#fff27a', 26); }
+        break;
+      case 'meteor':
+        if (o.age >= 1) { const n = 3 + Math.floor(R() * 3); for (let i = 0; i < n; i++) shoot({ x: o.x + rand(-260, 260) - o.dir * 380, y: -80 - rand(0, 260), vx: o.dir * rand(170, 260), vy: rand(220, 360), w: 'meteor' });
+          C.text(cx(o.x), 150, '☄️ 운석이 떨어져요!', '#ffb38a', 26); o.life = 0; }
+        break;
+      case 'volcano':
+        o.cd--; if (o.cd === 1) C.text(o.x, o.y - 70, '🌋 화산이 꿈틀거려요…', '#ffb38a', 20);
+        if (o.cd <= 0) { o.cd = 2; const n = 6 + Math.floor(R() * 3); for (let i = 0; i < n; i++) shoot({ x: o.x + rand(-8, 8), y: o.y - 16, vx: rand(-330, 330), vy: rand(-820, -460), w: 'lava' }); C.text(o.x, o.y - 70, '🌋 펑! 화산 분출!', '#ff7a3d', 26); }
+        break;
+      case 'tide': { if (st.water == null) st.water = WH - 8; const lim = Math.round(WH * 0.55); if (st.water > lim) { st.water = Math.max(lim, st.water - o.step); C.text(cx(WW / 2), st.water - 60, o.first ? '🌊 밀물이 들어와요! 높은 곳으로!' : '🌊 물이 또 차올라요!', '#bfe9ff', 24); } o.first = 0; break; }
+      case 'balloon': o.x = envClamp(o.x + (C.wind || 0) * 0.9 + o.vx, 60, WW - 60); break;
+      case 'boss': o.x += o.dir * o.sp; if (o.x < -180 || o.x > WW + 180) { o.life = 0; C.text(cx(o.x), o.y + 60, '👑 보스 비행선이 떠났어요', '#ffe08a', 20); } break;
+    }
+    if (o.t !== 'boss') o.life--;
+  }
+  for (const o of st.list) if (!o.gone && o.life <= 0) { o.gone = true; if (o.t === 'bridge') C.clear(o.x1, o.y - 1, o.x2, o.y + o.th + 1); }
+  st.list = st.list.filter(o => !o.gone);
+  // 새 환경 요소
+  if (st.list.length + (twCount || 0) < 3 && R() < 0.25) {
+    const pool = envPool(C.kind).filter(([k]) => !(ENV_ONE.includes(k) && st.list.some(o => o.t === k)));
+    const tot = pool.reduce((a, b) => a + b[1], 0); let x = R() * tot, k = pool[0][0]; for (const [kk, wt] of pool) { x -= wt; if (x <= 0) { k = kk; break; } }
+    const o = envMake(k, st, C);
+    if (o) {
+      st.list.push(o); if (k === 'bridge') C.fill(o.x1, o.y, o.x2, o.y + o.th);
+      if (k === 'tide' && st.water == null) st.water = WH - 8;
+      const [ax, ay] = envAnchor(o); const msg = { cloud: '⚡ 번개 구름 등장! 3차례마다 번개', meteor: '☄️ 운석 경보! 다음 차례에 운석이 떨어져요', bridge: '🌈 무지개 다리! 2차례 뒤 사라져요', hole: '🌀 블랙홀 한 쌍! 들어간 포탄은 다른 구멍으로', gust: '💨 돌풍 띠! 이 높이를 지나는 포탄은 크게 밀려요', crystal: '🪞 반사 수정! 맞으면 포탄이 튕겨요 (3번)', tide: '🌊 밀물 시작! 물이 점점 차올라요', volcano: '🌋 화산 등장! 2차례마다 용암 분출', ice: '🧊 빙판! 미끄럽고 폭발에 잘 밀려요', balloon: '🎁 황금 풍선! 맞히면 큰 보상', qbox: '❓ 퀴즈 상자! 맞히고 문제를 풀면 강한 무기', boss: '👑 보스 비행선! 격추하면 500G' }[k];
+      C.text(ax || cx(WW / 2), Math.max(130, ay || 200), msg, '#ffffff', 22);
+    }
+  }
+  return fired;
+}
+// 포탄이 한 걸음 움직일 때: 0 없음, 1 그 자리에서 터짐, 2 튕김·순간이동, 3 물에 빠짐
+function envStep(p, h, st, on) {
+  if (!st) return 0;
+  if (p.envCd) p.envCd = Math.max(0, p.envCd - h);
+  for (const o of st.list) {
+    if (o.gone) continue;
+    switch (o.t) {
+      case 'gust': if (Math.abs(p.y - o.y) < o.hh) p.vx += o.dir * o.pow * h; break;
+      case 'hole': if (!p.envCd) { let dx = null, dy = null; if (Math.hypot(p.x - o.ax, p.y - o.ay) < 26) { dx = o.bx; dy = o.by; } else if (Math.hypot(p.x - o.bx, p.y - o.by) < 26) { dx = o.ax; dy = o.ay; }
+          if (dx !== null) { const sp = Math.hypot(p.vx, p.vy) || 1; p.x = dx + p.vx / sp * 30; p.y = dy + p.vy / sp * 30; p.envCd = 0.4; if (on) on('hole', o, p); return 2; } } break;
+      case 'crystal': { const ddx = p.x - o.x, ddy = p.y - o.y, d = Math.hypot(ddx, ddy);
+        if (d < o.r && !p.envCd) { const nx = ddx / (d || 1), ny = ddy / (d || 1), dot = p.vx * nx + p.vy * ny; if (dot < 0) { p.vx -= 2 * dot * nx; p.vy -= 2 * dot * ny; } p.x = o.x + nx * (o.r + 2); p.y = o.y + ny * (o.r + 2); p.envCd = 0.12; o.hp--; if (o.hp <= 0) o.gone = true; if (on) on(o.gone ? 'crack' : 'refl', o, p); return 2; } break; }
+      case 'balloon': case 'qbox': if (Math.hypot(p.x - o.x, p.y - o.y) < 26) return 1; break;
+      case 'boss': if (Math.abs(p.x - o.x) < 80 && Math.abs(p.y - o.y) < 30) return 1; break;
+    }
+  }
+  if (st.water != null && p.y > st.water + 6) return 3;
+  return 0;
+}
+// 폭발이 환경 요소에 닿았을 때 (풍선·퀴즈 상자·보스)
+function envBlast(st, x, y, r, dmg, owner, on) {
+  if (!st || !owner || owner.env) return;
+  for (const o of st.list) {
+    if (o.gone) continue;
+    if ((o.t === 'balloon' || o.t === 'qbox') && Math.hypot(o.x - x, o.y - y) < r + 26) { o.gone = true; on(o.t, o, owner); }
+    else if (o.t === 'boss') { const d = Math.hypot(o.x - x, o.y - y); if (d < r + 70) { const dd = Math.max(8, Math.round(dmg * (1 - Math.max(0, d - 40) / (r + 70) * 0.6))); o.hp -= dd; on('bossHit', o, owner, dd); if (o.hp <= 0) { o.gone = true; on('bossDown', o, owner); } } }
+  }
+}
+function envOnIce(st, t) { if (!st) return false; for (const o of st.list) if (o.t === 'ice' && !o.gone && t.x >= o.x1 && t.x <= o.x2) return true; return false; }
+function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water } : null; }
 /*EXTRA_MAPS_END*/
 /* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
 function genWorld(seed, kind, nTanks) {
@@ -1967,6 +2326,7 @@ function dirtW(w, cx, cy, r) {
   const WW = w.WW, x0 = Math.max(0, (cx - r) | 0), x1 = Math.min(WW - 1, (cx + r) | 0), y0 = Math.max(0, (cy - r) | 0), y1 = Math.min(w.WH - 1, (cy + r) | 0), r2 = r * r;
   for (let y = y0; y <= y1; y++) { const dy = y - cy; for (let x = x0; x <= x1; x++) { const dx = x - cx; if (dx * dx + dy * dy <= r2) w.solid[y * WW + x] = 1; } }
 }
+function fillW(w, x1, y1, x2, y2, v) { x1 = Math.max(0, x1 | 0); x2 = Math.min(w.WW - 1, x2 | 0); y1 = Math.max(0, y1 | 0); y2 = Math.min(w.WH - 1, w.bedrockY - 1, y2 | 0); for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) w.solid[y * w.WW + x] = v; }
 function standSpots(w) { const out = [], s = (x, y) => isSolidW(w, x, y); for (let x = 50; x < w.WW - 50; x += 14) { for (let y = 45; y < w.WH - 40; y++) { if (s(x, y) && !s(x, y - 1) && !s(x, y - 24) && !s(x, y - 44) && (s(x - 8, y + 2) || s(x + 8, y + 2))) out.push({ x, y: y - 1 }); } } return out; }
 function shuffleR(a, R) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function surfaceYW(w, x) { for (let y = 0; y < w.WH; y++) if (isSolidW(w, x, y)) return y; return w.WH + 50; }
@@ -2052,6 +2412,46 @@ function makeSim(w, tanks, opts) {
     else if (kind === 'fire_in') E({ e: 'text', x, y, s: '불꽃 회오리!', c: '#ffb347', z: 18 });
     else if (kind === 'fire_out') E({ e: 'text', x, y, s: '어디로 갈까?!', c: '#ff8a5c', z: 18 }); }
   S.twTurn = function () { const before = S.twisters.length; twisterTurn(S.twisters, WW, surfTop, S.wind || 0, rand, () => twSeq++); return S.twisters.length > before ? S.twisters[S.twisters.length - 1] : null; };
+  S.env = envNew(); const ENVO = { i: -1, env: true, dmgMul: 1, alive: true, isAI: true, team: -99 };
+  function envFx(k, o, a, b) { // a = 포탄(p) 또는 쏜 탱크
+    const id = o.id;
+    if (k === 'hole') text(a.x, a.y - 30, '🌀 쑥!', '#d9b3ff', 18);
+    else if (k === 'refl') { text(o.x, o.y - 40, '🪞 팅!', '#bff6ff', 18); E({ e: 'envset', id, hp: o.hp }); }
+    else if (k === 'crack') { text(o.x, o.y - 40, '🪞 수정이 깨졌어요!', '#bff6ff', 20); E({ e: 'envgone', id }); }
+    else if (k === 'balloon') { const t = a; if (o.prize === 'gold') goldFor(t, '황금 풍선', 200); else if (t.isAI && t.ammo) t.ammo[o.prize] = (t.ammo[o.prize] || 0) + 1; E({ e: 'prize', i: t.i, item: o.prize, src: 'balloon', id, x: Math.round(o.x), y: Math.round(o.y) }); }
+    else if (k === 'qbox') { const t = a; let item = 'quiz'; if (t.isAI) { item = R() < 0.5 ? ENV_PRIZES[Math.floor(R() * ENV_PRIZES.length)] : 'none'; if (item !== 'none' && t.ammo) t.ammo[item] = (t.ammo[item] || 0) + 1; } E({ e: 'prize', i: t.i, item, src: 'qbox', id, x: Math.round(o.x), y: Math.round(o.y) }); }
+    else if (k === 'bossHit') E({ e: 'envhp', id, hp: Math.max(0, o.hp), d: b, x: Math.round(o.x), y: Math.round(o.y) });
+    else if (k === 'bossDown') { goldFor(a, '보스 격추', 500); E({ e: 'prize', i: a.i, item: 'boss', src: 'boss', id, x: Math.round(o.x), y: Math.round(o.y) }); }
+  }
+  S.envView = () => envView(S.env);
+  S.resolveEnv = function () {
+    WSTAT.nuke.r = w.nukeR; S.ev = []; S.proj = []; S.delayed = []; S.t = 0; S.gold = {};
+    const C = { WW, WH, kind: w.kind, R, wind: S.wind, isSolid,
+      spawn: o => S.proj.push(mkP(Object.assign({ owner: ENVO }, o))),
+      text: (x, y, s, c, z) => text(x, y, s, c, z),
+      fill: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 1); E({ e: 'fill', x1, y1, x2, y2 }); },
+      clear: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 0); E({ e: 'clear', x1, y1, x2, y2 }); } };
+    const fired = envTurn(S.env, C, S.twisters.length);
+    const frames = [];
+    const snap = () => frames.push([+S.t.toFixed(3), S.proj.filter(p => !p.dead).map(p => [p.id, Math.round(p.x), Math.round(p.y), p.w, p.mode === 'roll' ? 1 : 0]), tanks.map(t => t.alive ? [Math.round(t.x), Math.round(t.y), +(t.rot || 0).toFixed(2), t.chuteOpen ? 1 : 0] : 0)]);
+    snap(); const dt = 1 / 60; let quiet = 0, step = 0;
+    while (S.t < 20) {
+      S.t += dt; step++;
+      for (const d of S.delayed) { d.t -= dt; if (d.t <= 0) { d.done = true; if (d.boom) explode(d.p); else S.proj.push(d.p); } }
+      S.delayed = S.delayed.filter(d => !d.done);
+      for (const p of S.proj) if (!p.dead) updProj(p, dt);
+      S.proj = S.proj.filter(p => !p.dead);
+      for (const t of tanks) tankPhysics(t, dt);
+      crateFall();
+      if (step % 3 === 0) snap();
+      const busy = S.proj.length || S.delayed.length || tanks.some(t => t.alive && t.air);
+      quiet = busy ? 0 : quiet + dt; if (quiet > 0.4) break;
+    }
+    snap();
+    const out = { fired, dur: +S.t.toFixed(3), frames, ev: S.ev, gold: S.gold };
+    S.ev = null; S.proj = null; S.delayed = null;
+    return out;
+  };
   S.twView = () => S.twisters.map(t => ({ id: t.id, x: Math.round(t.x), base: Math.round(t.base), h: Math.round(t.h), w: t.w, fire: t.fire, life: t.life }));
   function startRoll(p) { let n = 0; while (isSolid(p.x, p.y) && n < 14) { p.y--; n++; } p.mode = 'roll'; p.rollT = 0; const l = surfaceAt(p.x - 12, p.y), r = surfaceAt(p.x + 12, p.y); p.dir = Math.abs(l - r) > 3 ? (l > r ? -1 : 1) : (Math.sign(p.vx) || 1); }
   function updRoll(p, dt) {
@@ -2069,6 +2469,7 @@ function makeSim(w, tanks, opts) {
     const sp = Math.hypot(p.vx, p.vy); const n = Math.max(1, Math.ceil(sp * dt / 3)); const h = dt / n;
     for (let i = 0; i < n; i++) {
       if (S.twisters.length && twisterStep(p, h, S.twisters, rand, twEvt)) { p.age += h; continue; }
+      if (S.env.list.length || S.env.water != null) { const er = envStep(p, h, S.env, envFx); if (er === 1) { explode(p); return; } if (er === 3) { p.dead = true; E({ e: 'splash', x: Math.round(p.x), y: Math.round(S.env.water) }); return; } }
       const pvy = p.vy; p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h;
       if (p.w === 'mirv' && pvy < 0 && p.vy >= 0) { p.w = 'mirvc'; [-2, -1, 1, 2].forEach(k => S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 55, vy: p.vy, w: 'mirvc', owner: p.owner, age: 1 }))); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 0 }); }
       if (p.w === 'death' && pvy < 0 && p.vy >= 0) { p.w = 'deathc'; for (let k = -5; k <= 5; k++) if (k) S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 42, vy: p.vy + rand(-30, 30), w: 'deathc', owner: p.owner, age: 1 })); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 1 }); }
@@ -2086,7 +2487,7 @@ function makeSim(w, tanks, opts) {
   function explode(p) {
     if (p.warp) { warpLand(p); return; }
     p.dead = true; const W = WSTAT[p.w];
-    hitCrates(p.x, p.y, W.r + 24, p.owner);
+    if (!p.owner.env) hitCrates(p.x, p.y, W.r + 24, p.owner);
     const sub = (wk, o) => mkP(Object.assign({ x: p.x, y: p.y, vx: 0, vy: 0, w: wk, owner: p.owner, age: 1 }, o));
     if (p.w === 'triple') S.delayed.push({ t: 0.35, p: sub('tri2'), boom: 1 }, { t: 0.75, p: sub('tri3'), boom: 1 });
     if (p.w === 'leap') { p.bounce = (p.bounce || 0) + 1; if (p.bounce < 4) { let y = p.y, k = 0; while (isSolid(p.x, y) && k < 30) { y--; k++; } const q = sub('leap', { y: y - 4, vx: clamp(p.vx * 0.7, -260, 260) + rand(-20, 20), vy: -Math.max(260, Math.abs(p.vy) * 0.6) }); q.bounce = p.bounce; q.age = 0.5; S.delayed.push({ t: 0.05, p: q }); } }
@@ -2097,7 +2498,8 @@ function makeSim(w, tanks, opts) {
     if (p.dmgX > 1 && hits.length) E({ e: 'text', x: Math.round(p.x), y: Math.round(p.y) - 50, s: '🔥 불꽃 피해 2배!', c: '#ff6b3d', z: 22 });
     carveW(w, p.x, p.y, W.r);
     E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w });
-    for (const [t, dmg, cov] of hits) hurt(t, dmg, p.owner, cov);
+    envBlast(S.env, p.x, p.y, W.r, W.dmg * (p.owner.dmgMul || 1) * (p.dmgX || 1), p.owner, envFx);
+    for (const [t, dmg, cov] of hits) { hurt(t, dmg, p.owner.env ? null : p.owner, cov); if (t.alive && envOnIce(S.env, t)) { t.vx = (t.x >= p.x ? 1 : -1) * 240; t.vy = -170; t.air = true; t.peak = t.y; t.y -= 2; } }
   }
 
   /* ---- 탱크 낙하 (혼자 하기 tankPhysics와 같음) ---- */
@@ -2115,6 +2517,7 @@ function makeSim(w, tanks, opts) {
   }
   function tankPhysics(t, dt) {
     if (!t.alive) return;
+    if (S.env.water != null && t.y > S.env.water + 6) { text(t.x, S.env.water - 40, '풍덩! 물에 잠겼어요', '#bfe9ff', 22); killTank(t, 'fall'); return; }
     if (t.spider && spiderPhysics(t, dt)) return;
     if (!t.spider) { let n = 0; while (isSolid(t.x, t.y - 2) && n < 120) { t.y--; n++; } t.rot = 0; }
     const grounded = isSolid(t.x, t.y + 1) || isSolid(t.x - 9, t.y + 1) || isSolid(t.x + 9, t.y + 1);
@@ -2468,7 +2871,7 @@ function onRound(info){
   const players=G&&G.online&&G.players?G.players:[];
   G={online:true,players,round:info.round,totalRounds:info.total,teamMode:info.teamMode,teamWins:info.teamWins.slice(),matchGold:G&&G.online?G.matchGold:0,
     proj:[],delayed:[],crates:info.crates.map(c=>({id:c.id,x:c.x,y:c.y,ty:c.y,landed:true})),parts:[],texts:[],ghost:null,state:'wait',turn:-1,cycle:1,
-    roundGold:{},roundGoldTotal:0,doubled:false,weapon:'basic',shake:0,flash:0,panHold:0,timer:0,wind:0,turnSec:info.turnSec,twisters:info.tw||[]};
+    roundGold:{},roundGoldTotal:0,doubled:false,weapon:'basic',shake:0,flash:0,panHold:0,timer:0,wind:0,turnSec:info.turnSec,twisters:info.tw||[],env:info.env||{list:[],water:null}};
   G.tanks=info.tanks.map(v=>mkTank(v,players));
   BT.myI=G.tanks.findIndex(t=>t.uid===ON.you.id);G.me=G.tanks[BT.myI]||G.tanks[0];G.cur=null;BT.pmap.clear();BT.play=null;BT.fell=false;BT.aiAim=null;
   document.body.classList.add('battle');hideAllScreens();$('#hud').classList.remove('hidden');
@@ -2478,7 +2881,7 @@ function onRound(info){
   if(G.me.shield&&!G.me.isAI&&D.items.startShield>0){D.items.startShield--;saveNow();addText(G.me.x,G.me.y-110,`시작 방어막 켜짐! (남은 ${D.items.startShield}개)`,'#8ff',2.2,18)}
   updateHud();
 }
-function onTurn(m){if(!G||!G.online)return;finishPlay();if(m.tw)G.twisters=m.tw;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
+function onTurn(m){if(!G||!G.online)return;finishPlay();if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;if(m.twNew&&typeof addText==='function'){const t=m.tw[m.tw.length-1];if(t)addText(t.x,t.base-t.h-20,m.twNew===2?'🔥 불꽃 회오리 등장! 피해 2배':'🌪 회오리 등장!',m.twNew===2?'#ff8a3d':'#d8ecff',2.2,22)}
   const t=G.tanks[m.i];G.turn=m.i;G.cur=t;G.wind=m.wind;G.cycle=m.cycle;G.timer=m.ms/1000;
   G.state=(t===G.me&&t.isAI)?'wait':'aim';G.scope=false;G.double=false;G.warp=false;G.teleArm=false;G.repairUsed=false;aim=null;closeTray();
   for(const o of G.tanks)if(o.rope)releaseRope(o,true);G.ropeArm=false;ropeV=0;
@@ -2509,7 +2912,7 @@ function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
       t.hp=e.hp;addText(t.x+rand(-8,8),t.y-44,'-'+e.d,'#ff6b6b',1.2,20);break;
     case 'ff':if(e.by===BT.myI)addText(t.x,t.y-60,'아군이에요!','#ffb3b3',1,14);break;
     case 'kill':{if(!t)break;t.alive=false;t.hp=0;const k=G.tanks[e.by];if(k&&k!==t){k.roundKills++;k.p.kills++}
-      if(e.why==='fall'){addText(t.x,WH-40,'풍덩! 물에 빠졌어요','#bfe9ff',1.6,22);for(let i=0;i<24;i++)G.parts.push({x:t.x,y:WH-10,vx:rand(-140,140),vy:rand(-320,-120),life:0.8,max:0.8,size:rand(3,7),color:'#bfe9ff',grav:600})}
+      if(e.why==='fall'){const wy=G.env&&G.env.water!=null?G.env.water:WH;addText(t.x,wy-40,'풍덩! 물에 빠졌어요','#bfe9ff',1.6,22);for(let i=0;i<24;i++)G.parts.push({x:t.x,y:WH-10,vx:rand(-140,140),vy:rand(-320,-120),life:0.8,max:0.8,size:rand(3,7),color:'#bfe9ff',grav:600})}
       addText(t.x,Math.min(t.y,WH-40)-70,t===G.me?'내 탱크 격파…':'격파!','#fff',1.6,24);G.shake=16;sfx('bigboom');
       for(let i=0;i<50;i++){const a=rand(0,7),s=rand(60,380);G.parts.push({x:t.x,y:Math.min(t.y,WH)-10,vx:Math.cos(a)*s,vy:Math.sin(a)*s-100,life:rand(0.6,1.2),max:1.2,size:rand(3,9),color:i%3?t.color:'#ffb347',grav:400})}break}
     case 'split':addText(e.x,e.y-(e.big?30:20),e.big?'대분열!!':'분열!',e.big?'#ffd43b':'#fff',e.big?1.2:0.8,e.big?26:16);if(e.big)G.shake=8;break;
@@ -2521,6 +2924,17 @@ function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
     case 'gold':if(e.i===BT.myI&&!G.me.isAI)myGold(e.l,e.a);break;
     case 'text':addText(e.x,e.y,e.s,e.c,1.4,e.z);break;
     case 'fire2':sfx('fire');break;
+    case 'fill':fillRectT(e.x1,e.y1,e.x2,e.y2);break;
+    case 'clear':clearRectT(e.x1,e.y1,e.x2,e.y2);break;
+    case 'splash':splashFx(e.x,e.y);break;
+    case 'envset':{const o=G.env&&G.env.list.find(o=>o.id===e.id);if(o)o.hp=e.hp;break}
+    case 'envgone':if(G.env)G.env.list=G.env.list.filter(o=>o.id!==e.id);break;
+    case 'envhp':{const o=G.env&&G.env.list.find(o=>o.id===e.id);if(o)o.hp=e.hp;addText(e.x+rand(-20,20),e.y-30,'-'+e.d,'#ffb3b3',1,20);break}
+    case 'prize':{if(G.env)G.env.list=G.env.list.filter(o=>o.id!==e.id);const mine=e.i===BT.myI&&!G.me.isAI;const nm=t?t.name:'';
+      if(e.src==='balloon'){popFx(e.x,e.y,'#ffd43b');sfx('coin');if(mine&&e.item!=='gold'){D.ammo[e.item]=(D.ammo[e.item]||0)+1;saveNow()}addText(e.x,e.y-40,`🎁 ${mine?'획득!':nm+' 획득'} ${envPrizeName(e.item)}`,'#ffd43b',2,20)}
+      else if(e.src==='qbox'){popFx(e.x,e.y,'#c9a6ff');if(mine){addText(e.x,e.y-40,'❓ 퀴즈 상자 열림! 문제를 맞혀요','#e5d4ff',2,20);envQuizPrize()}else addText(e.x,e.y-40,e.item==='none'?`❓ ${nm} 오답!`:e.item==='quiz'?`❓ ${nm} 퀴즈 상자 열림!`:`❓ ${nm} 정답! ${envPrizeName(e.item)}`,'#e5d4ff',2,18)}
+      else if(e.src==='boss'){G.shake=18;popFx(e.x,e.y,'#ffd43b');popFx(e.x,e.y,'#ff6b3d');sfx('bigboom');addText(e.x,e.y-40,`👑 보스 격추! ${mine?'+500G':nm}`,'#ffe08a',2.4,28)}
+      break}
   }}
 
 /* ---- 발사 장면 다시 보기 ---- */
@@ -2530,6 +2944,8 @@ function onShot(m){if(!G||!G.online)return;finishPlay();aim=null;
   const mz=t;for(let i=0;i<10;i++)G.parts.push({x:mz.x+Math.cos(m.a)*22,y:mz.y-10+Math.sin(m.a)*22,vx:Math.cos(m.a)*rand(40,160)+rand(-30,30),vy:Math.sin(m.a)*rand(40,160)+rand(-30,30),life:0.4,max:0.4,size:rand(3,6),color:'rgba(230,230,230,.8)',grav:-20});
   sfx('fire');BT.pmap.clear();
   BT.play={t:0,k:0,j:0,res:m.res,final:m.final,mine:t===G.me,track:[]};G.state='fly';G.panHold=0;updateHud()}
+function onEnv(m){if(!G||!G.online)return;finishPlay();aim=null;if(m.env)G.env=m.env;
+  BT.pmap.clear();BT.play={t:0,k:0,j:0,res:m.res,final:m.final,mine:false,track:[]};G.state='fly';G.panHold=0;if(!m.res.fired)finishPlay()}
 function finishPlay(){const P=BT.play;if(!P)return;BT.play=null;
   while(P.j<P.res.ev.length)applyEv(P.res.ev[P.j++]);
   P.final.forEach(v=>{const t=G.tanks[v.i];if(t)setFromView(t,v)});
@@ -2553,7 +2969,7 @@ function stepPlay(dt){const P=BT.play;if(!P)return;P.t+=dt;const F=P.res.frames;
 window.onlineStep=function(dt){
   if(G.state==='aim'||G.state==='sent'){G.timer=Math.max(0,G.timer-dt);const t=G.cur;
     if(t===G.me&&G.state==='aim'&&t.alive){
-      if(moveDir&&!aim&&!QZ)moveTank(t,moveDir,dt);else{t.crawlDir=0;t.crawlSense=0}
+      if(moveDir&&!aim&&!QZ)moveTank(t,moveDir,dt);else{t.crawlDir=0;t.crawlSense=0;iceIdle(t,dt)}
       tankPhysics(t,dt);
       if(!t.alive&&!BT.fell){BT.fell=true;send({t:'b_fell'})}
       const now=performance.now();const key=Math.round(t.x)+','+Math.round(t.y)+','+t.angle.toFixed(2);
@@ -2632,8 +3048,8 @@ function onMatchEnd(m){if(!G||!G.online)return;G.state='over';if(typeof QZ!=='un
   $('#fnTable').innerHTML=html;$('#hud').classList.add('hidden');showScreen('#sFinal');$('#fnLobby').textContent='방으로 돌아가기';
 }
 function backToRoom(){G=null;document.body.classList.remove('battle');$('#hud').classList.add('hidden');$('#fnLobby').textContent='로비로';if(ON.room){showRoom();renderRoom()}else showOnLobby()}
-function onSync(m){if(!m.info)return;onRound(m.info);if(m.tw)G.twisters=m.tw;
-  for(const [dirt,x,y,r] of m.ops){if(dirt)addDirt(x,y,r);else carve(x,y,r)}
+function onSync(m){if(!m.info)return;onRound(m.info);if(m.tw)G.twisters=m.tw;if(m.env)G.env=m.env;
+  for(const o of m.ops){if(o[0]===2)fillRectT(o[1],o[2],o[3],o[4]);else if(o[0]===3)clearRectT(o[1],o[2],o[3],o[4]);else if(o[0])addDirt(o[1],o[2],o[3]);else carve(o[1],o[2],o[3])}
   if(m.state==='aim'&&m.turn>=0){onTurn({i:m.turn,wind:m.wind,ms:m.ms,cycle:G.cycle,extra:null})}
   addText(G.me.x,G.me.y-130,'다시 연결됐어요!','#7dffb1',2,18)}
 
@@ -2649,6 +3065,7 @@ $('#orReady').onclick=()=>{const m=ON.room&&ON.room.slots.find(s=>s.uid===ON.you
 window.__onBattle=function(m){switch(m.t){
   case 'b_round':onRound(m.info);break;
   case 'b_turn':onTurn(m);break;
+  case 'b_env':onEnv(m);break;
   case 'b_pos':if(G&&G.online){const t=G.tanks[m.i];if(t&&t!==G.me){t.tx=m.x;t.ty=m.y;t.angle=m.a;t.rot=m.r}}break;
   case 'b_aim':if(G&&G.online){const t=G.tanks[m.i];BT.aiAim={i:m.i,from:t.angle,to:m.a,pw:m.pw,t:0}}break;
   case 'b_shot':onShot(m);break;

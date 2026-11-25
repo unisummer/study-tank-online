@@ -14,6 +14,7 @@ const WSTAT = {
   dirtL: { dmg: 0, r: 105, dirt: 1 }, triple: { dmg: 24, r: 34 }, leap: { dmg: 22, r: 30 }, napalm: { dmg: 9, r: 16 },
   air: { dmg: 20, r: 30 }, death: { dmg: 28, r: 44 }, nuke: { dmg: 90, r: 430 }, mirvc: { dmg: 20, r: 26 },
   deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
+  bolt: { dmg: 18, r: 24 }, meteor: { dmg: 26, r: 44 }, lava: { dmg: 14, r: 22 },
 };
 const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
 const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
@@ -136,6 +137,142 @@ function twisterStep(p, h, list, rand, onEvt) {
   }
   return false;
 }
+
+/* ===== 환경 요소 12종 (회오리 말고) — 혼자 하기·서버가 함께 씀 =====
+   C = {WW, WH, kind, R, wind, isSolid(x,y), spawn({x,y,vx,vy,w}), text(x,y,s,c,z), fill(x1,y1,x2,y2), clear(x1,y1,x2,y2)} */
+const ENV_INFO = { cloud: '⚡ 번개 구름', meteor: '☄️ 운석 경보', bridge: '🌈 무지개 다리', hole: '🌀 블랙홀', gust: '💨 돌풍 띠', crystal: '🪞 반사 수정',
+  tide: '🌊 밀물', volcano: '🌋 화산', ice: '🧊 빙판', balloon: '🎁 황금 풍선', qbox: '❓ 퀴즈 상자', boss: '👑 보스 비행선' };
+const ENV_ONE = ['tide', 'volcano', 'ice', 'boss'];   // 한 번에 하나만
+const ENV_PRIZES = ['air', 'triple', 'napalm', 'death', 'leap', 'nuke'];
+function envNew() { return { list: [], seq: 1, water: null }; }
+function envPool(kind) {
+  if (kind === 'wcave') return [['hole', 3], ['crystal', 3], ['gust', 2], ['qbox', 3], ['balloon', 2], ['tide', 2], ['bridge', 2]];
+  const p = [['cloud', 3], ['meteor', 2], ['bridge', 2], ['hole', 2], ['gust', 2], ['crystal', 2], ['balloon', 3], ['qbox', 3], ['boss', 1]];
+  if (!['hills', 'scorched', 'sphinx'].includes(kind)) p.push(['tide', 2]);
+  if (['hills', 'scorched', 'sphinx', 'canyon', 'grave', 'towers', 'sky'].includes(kind)) p.push(['volcano', 2], ['ice', 2]);
+  return p;
+}
+function envClamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function envSurf(C, x) { x = Math.round(x); for (let y = 0; y < C.WH; y++) if (C.isSolid(x, y)) return y; return C.WH; }
+// 하늘의 빈 자리 찾기 (주변 반지름 rr 안에 땅이 없는 곳)
+function envAir(C, rr, x0, x1, y0, y1) {
+  const R = C.R;
+  for (let k = 0; k < 40; k++) {
+    const x = Math.round(x0 + R() * (x1 - x0)), y = Math.round(y0 + R() * (y1 - y0)); let ok = true;
+    for (let a = 0; a < 12 && ok; a++) { const an = a / 12 * Math.PI * 2; if (C.isSolid(x + Math.cos(an) * rr, y + Math.sin(an) * rr) || C.isSolid(x + Math.cos(an) * rr * 0.5, y + Math.sin(an) * rr * 0.5)) ok = false; }
+    if (ok && !C.isSolid(x, y)) { let g = y; while (g < C.WH && !C.isSolid(x, g)) g++; if (g - y > 110 || C.kind === 'wcave') return { x, y }; }
+  }
+  return null;
+}
+function envMake(k, st, C) {
+  const R = C.R, rand = (a, b) => a + R() * (b - a), WW = C.WW, WH = C.WH, id = st.seq++;
+  switch (k) {
+    case 'cloud': return { t: k, id, x: Math.round(rand(200, WW - 200)), y: 70, vx: rand(-25, 25), cd: 3, life: 7 };
+    case 'meteor': return { t: k, id, x: Math.round(rand(300, WW - 300)), dir: R() < 0.5 ? -1 : 1, life: 2 };
+    case 'bridge': {
+      for (let tr = 0; tr < 40; tr++) {
+        const len = rand(320, 520), x1 = Math.round(rand(80, WW - 80 - len)), x2 = Math.round(x1 + len), y = Math.round(rand(WH * 0.18, WH * 0.75)); let ok = true;
+        for (let x = x1; x <= x2 && ok; x += 10) if (C.isSolid(x, y - 40) || C.isSolid(x, y) || C.isSolid(x, y + 14)) ok = false;
+        if (!ok) continue; let g = y; const mx = (x1 + x2) >> 1; while (g < WH && !C.isSolid(mx, g)) g++; if (g - y < 120 && C.kind !== 'wcave') continue;
+        return { t: k, id, x1, x2, y, th: 12, life: 2 };
+      }
+      return null;
+    }
+    case 'hole': {
+      const a = envAir(C, 40, WW * 0.08, WW * 0.45, 140, WH * 0.7), b = envAir(C, 40, WW * 0.55, WW * 0.92, 140, WH * 0.7);
+      if (!a || !b) return null; if (R() < 0.5) return { t: k, id, ax: a.x, ay: a.y, bx: b.x, by: b.y, life: 4 }; return { t: k, id, ax: b.x, ay: b.y, bx: a.x, by: a.y, life: 4 };
+    }
+    case 'gust': return { t: k, id, y: Math.round(rand(WH * 0.15, WH * 0.5)), hh: 45, dir: R() < 0.5 ? -1 : 1, pow: 750, life: 3 };
+    case 'crystal': { const a = envAir(C, 44, WW * 0.15, WW * 0.85, 140, WH * 0.7); return a ? { t: k, id, x: a.x, y: a.y, r: 30, hp: 3, life: 6 } : null; }
+    case 'tide': return { t: k, id, step: 34, life: 4, first: 1 };
+    case 'volcano': {
+      let bx = -1, by = WH; for (let x = 160; x < WW - 160; x += 16) { const y = envSurf(C, x); if (y < by) { by = y; bx = x; } }
+      if (bx < 0 || by > WH - 80) return null; return { t: k, id, x: bx, y: by, cd: 2, life: 6 };
+    }
+    case 'ice': { const len = rand(420, 720), x1 = Math.round(rand(60, WW - 60 - len)); return { t: k, id, x1, x2: Math.round(x1 + len), life: 6 }; }
+    case 'balloon': { const a = envAir(C, 36, 150, WW - 150, 130, WH * 0.55); return a ? { t: k, id, x: a.x, y: a.y, vx: rand(-20, 20), life: 5, prize: R() < 0.6 ? 'gold' : ENV_PRIZES[Math.floor(R() * ENV_PRIZES.length)] } : null; }
+    case 'qbox': { const a = envAir(C, 36, 150, WW - 150, 130, WH * 0.6); return a ? { t: k, id, x: a.x, y: a.y, life: 6 } : null; }
+    case 'boss': { const dir = R() < 0.5 ? -1 : 1; return { t: k, id, x: dir > 0 ? -120 : WW + 120, y: 120, dir, sp: Math.round(WW / 6), hp: 150, hpMax: 150, life: 99 }; }
+  }
+  return null;
+}
+function envAnchor(o) { // 글자를 띄울 자리
+  switch (o.t) { case 'bridge': return [(o.x1 + o.x2) / 2, o.y - 40]; case 'hole': return [o.ax, o.ay - 50]; case 'gust': return [0, o.y - 50]; case 'ice': return [(o.x1 + o.x2) / 2, 0];
+    case 'meteor': return [o.x, 140]; case 'tide': return [0, 0]; default: return [o.x, o.y - 60]; }
+}
+// 차례가 바뀔 때 한 번 — 환경 요소 움직이기·터뜨리기·새로 생기기. 포탄을 쏘면 true
+function envTurn(st, C, twCount) {
+  const R = C.R, rand = (a, b) => a + R() * (b - a), WW = C.WW, WH = C.WH; let fired = false;
+  const shoot = o => { C.spawn(o); fired = true; };
+  const cx = x => envClamp(x, 120, WW - 120);
+  for (const o of st.list) {
+    if (o.gone) continue; o.age = (o.age || 0) + 1;
+    switch (o.t) {
+      case 'cloud':
+        o.x = envClamp(o.x + (C.wind || 0) * 1.2 + o.vx, 80, WW - 80); o.cd--;
+        if (o.cd === 1) C.text(o.x, o.y + 70, '⚡ 다음 차례에 번개!', '#fff27a', 20);
+        if (o.cd <= 0) { o.cd = 3; shoot({ x: o.x + rand(-30, 30), y: o.y + 34, vx: 0, vy: 1400, w: 'bolt' }); C.text(o.x, o.y + 70, '⚡ 콰르릉!', '#fff27a', 26); }
+        break;
+      case 'meteor':
+        if (o.age >= 1) { const n = 3 + Math.floor(R() * 3); for (let i = 0; i < n; i++) shoot({ x: o.x + rand(-260, 260) - o.dir * 380, y: -80 - rand(0, 260), vx: o.dir * rand(170, 260), vy: rand(220, 360), w: 'meteor' });
+          C.text(cx(o.x), 150, '☄️ 운석이 떨어져요!', '#ffb38a', 26); o.life = 0; }
+        break;
+      case 'volcano':
+        o.cd--; if (o.cd === 1) C.text(o.x, o.y - 70, '🌋 화산이 꿈틀거려요…', '#ffb38a', 20);
+        if (o.cd <= 0) { o.cd = 2; const n = 6 + Math.floor(R() * 3); for (let i = 0; i < n; i++) shoot({ x: o.x + rand(-8, 8), y: o.y - 16, vx: rand(-330, 330), vy: rand(-820, -460), w: 'lava' }); C.text(o.x, o.y - 70, '🌋 펑! 화산 분출!', '#ff7a3d', 26); }
+        break;
+      case 'tide': { if (st.water == null) st.water = WH - 8; const lim = Math.round(WH * 0.55); if (st.water > lim) { st.water = Math.max(lim, st.water - o.step); C.text(cx(WW / 2), st.water - 60, o.first ? '🌊 밀물이 들어와요! 높은 곳으로!' : '🌊 물이 또 차올라요!', '#bfe9ff', 24); } o.first = 0; break; }
+      case 'balloon': o.x = envClamp(o.x + (C.wind || 0) * 0.9 + o.vx, 60, WW - 60); break;
+      case 'boss': o.x += o.dir * o.sp; if (o.x < -180 || o.x > WW + 180) { o.life = 0; C.text(cx(o.x), o.y + 60, '👑 보스 비행선이 떠났어요', '#ffe08a', 20); } break;
+    }
+    if (o.t !== 'boss') o.life--;
+  }
+  for (const o of st.list) if (!o.gone && o.life <= 0) { o.gone = true; if (o.t === 'bridge') C.clear(o.x1, o.y - 1, o.x2, o.y + o.th + 1); }
+  st.list = st.list.filter(o => !o.gone);
+  // 새 환경 요소
+  if (st.list.length + (twCount || 0) < 3 && R() < 0.25) {
+    const pool = envPool(C.kind).filter(([k]) => !(ENV_ONE.includes(k) && st.list.some(o => o.t === k)));
+    const tot = pool.reduce((a, b) => a + b[1], 0); let x = R() * tot, k = pool[0][0]; for (const [kk, wt] of pool) { x -= wt; if (x <= 0) { k = kk; break; } }
+    const o = envMake(k, st, C);
+    if (o) {
+      st.list.push(o); if (k === 'bridge') C.fill(o.x1, o.y, o.x2, o.y + o.th);
+      if (k === 'tide' && st.water == null) st.water = WH - 8;
+      const [ax, ay] = envAnchor(o); const msg = { cloud: '⚡ 번개 구름 등장! 3차례마다 번개', meteor: '☄️ 운석 경보! 다음 차례에 운석이 떨어져요', bridge: '🌈 무지개 다리! 2차례 뒤 사라져요', hole: '🌀 블랙홀 한 쌍! 들어간 포탄은 다른 구멍으로', gust: '💨 돌풍 띠! 이 높이를 지나는 포탄은 크게 밀려요', crystal: '🪞 반사 수정! 맞으면 포탄이 튕겨요 (3번)', tide: '🌊 밀물 시작! 물이 점점 차올라요', volcano: '🌋 화산 등장! 2차례마다 용암 분출', ice: '🧊 빙판! 미끄럽고 폭발에 잘 밀려요', balloon: '🎁 황금 풍선! 맞히면 큰 보상', qbox: '❓ 퀴즈 상자! 맞히고 문제를 풀면 강한 무기', boss: '👑 보스 비행선! 격추하면 500G' }[k];
+      C.text(ax || cx(WW / 2), Math.max(130, ay || 200), msg, '#ffffff', 22);
+    }
+  }
+  return fired;
+}
+// 포탄이 한 걸음 움직일 때: 0 없음, 1 그 자리에서 터짐, 2 튕김·순간이동, 3 물에 빠짐
+function envStep(p, h, st, on) {
+  if (!st) return 0;
+  if (p.envCd) p.envCd = Math.max(0, p.envCd - h);
+  for (const o of st.list) {
+    if (o.gone) continue;
+    switch (o.t) {
+      case 'gust': if (Math.abs(p.y - o.y) < o.hh) p.vx += o.dir * o.pow * h; break;
+      case 'hole': if (!p.envCd) { let dx = null, dy = null; if (Math.hypot(p.x - o.ax, p.y - o.ay) < 26) { dx = o.bx; dy = o.by; } else if (Math.hypot(p.x - o.bx, p.y - o.by) < 26) { dx = o.ax; dy = o.ay; }
+          if (dx !== null) { const sp = Math.hypot(p.vx, p.vy) || 1; p.x = dx + p.vx / sp * 30; p.y = dy + p.vy / sp * 30; p.envCd = 0.4; if (on) on('hole', o, p); return 2; } } break;
+      case 'crystal': { const ddx = p.x - o.x, ddy = p.y - o.y, d = Math.hypot(ddx, ddy);
+        if (d < o.r && !p.envCd) { const nx = ddx / (d || 1), ny = ddy / (d || 1), dot = p.vx * nx + p.vy * ny; if (dot < 0) { p.vx -= 2 * dot * nx; p.vy -= 2 * dot * ny; } p.x = o.x + nx * (o.r + 2); p.y = o.y + ny * (o.r + 2); p.envCd = 0.12; o.hp--; if (o.hp <= 0) o.gone = true; if (on) on(o.gone ? 'crack' : 'refl', o, p); return 2; } break; }
+      case 'balloon': case 'qbox': if (Math.hypot(p.x - o.x, p.y - o.y) < 26) return 1; break;
+      case 'boss': if (Math.abs(p.x - o.x) < 80 && Math.abs(p.y - o.y) < 30) return 1; break;
+    }
+  }
+  if (st.water != null && p.y > st.water + 6) return 3;
+  return 0;
+}
+// 폭발이 환경 요소에 닿았을 때 (풍선·퀴즈 상자·보스)
+function envBlast(st, x, y, r, dmg, owner, on) {
+  if (!st || !owner || owner.env) return;
+  for (const o of st.list) {
+    if (o.gone) continue;
+    if ((o.t === 'balloon' || o.t === 'qbox') && Math.hypot(o.x - x, o.y - y) < r + 26) { o.gone = true; on(o.t, o, owner); }
+    else if (o.t === 'boss') { const d = Math.hypot(o.x - x, o.y - y); if (d < r + 70) { const dd = Math.max(8, Math.round(dmg * (1 - Math.max(0, d - 40) / (r + 70) * 0.6))); o.hp -= dd; on('bossHit', o, owner, dd); if (o.hp <= 0) { o.gone = true; on('bossDown', o, owner); } } }
+  }
+}
+function envOnIce(st, t) { if (!st) return false; for (const o of st.list) if (o.t === 'ice' && !o.gone && t.x >= o.x1 && t.x <= o.x2) return true; return false; }
+function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water } : null; }
 /*EXTRA_MAPS_END*/
 /* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
 function genWorld(seed, kind, nTanks) {
@@ -226,6 +363,7 @@ function dirtW(w, cx, cy, r) {
   const WW = w.WW, x0 = Math.max(0, (cx - r) | 0), x1 = Math.min(WW - 1, (cx + r) | 0), y0 = Math.max(0, (cy - r) | 0), y1 = Math.min(w.WH - 1, (cy + r) | 0), r2 = r * r;
   for (let y = y0; y <= y1; y++) { const dy = y - cy; for (let x = x0; x <= x1; x++) { const dx = x - cx; if (dx * dx + dy * dy <= r2) w.solid[y * WW + x] = 1; } }
 }
+function fillW(w, x1, y1, x2, y2, v) { x1 = Math.max(0, x1 | 0); x2 = Math.min(w.WW - 1, x2 | 0); y1 = Math.max(0, y1 | 0); y2 = Math.min(w.WH - 1, w.bedrockY - 1, y2 | 0); for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) w.solid[y * w.WW + x] = v; }
 function standSpots(w) { const out = [], s = (x, y) => isSolidW(w, x, y); for (let x = 50; x < w.WW - 50; x += 14) { for (let y = 45; y < w.WH - 40; y++) { if (s(x, y) && !s(x, y - 1) && !s(x, y - 24) && !s(x, y - 44) && (s(x - 8, y + 2) || s(x + 8, y + 2))) out.push({ x, y: y - 1 }); } } return out; }
 function shuffleR(a, R) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function surfaceYW(w, x) { for (let y = 0; y < w.WH; y++) if (isSolidW(w, x, y)) return y; return w.WH + 50; }
@@ -311,6 +449,46 @@ function makeSim(w, tanks, opts) {
     else if (kind === 'fire_in') E({ e: 'text', x, y, s: '불꽃 회오리!', c: '#ffb347', z: 18 });
     else if (kind === 'fire_out') E({ e: 'text', x, y, s: '어디로 갈까?!', c: '#ff8a5c', z: 18 }); }
   S.twTurn = function () { const before = S.twisters.length; twisterTurn(S.twisters, WW, surfTop, S.wind || 0, rand, () => twSeq++); return S.twisters.length > before ? S.twisters[S.twisters.length - 1] : null; };
+  S.env = envNew(); const ENVO = { i: -1, env: true, dmgMul: 1, alive: true, isAI: true, team: -99 };
+  function envFx(k, o, a, b) { // a = 포탄(p) 또는 쏜 탱크
+    const id = o.id;
+    if (k === 'hole') text(a.x, a.y - 30, '🌀 쑥!', '#d9b3ff', 18);
+    else if (k === 'refl') { text(o.x, o.y - 40, '🪞 팅!', '#bff6ff', 18); E({ e: 'envset', id, hp: o.hp }); }
+    else if (k === 'crack') { text(o.x, o.y - 40, '🪞 수정이 깨졌어요!', '#bff6ff', 20); E({ e: 'envgone', id }); }
+    else if (k === 'balloon') { const t = a; if (o.prize === 'gold') goldFor(t, '황금 풍선', 200); else if (t.isAI && t.ammo) t.ammo[o.prize] = (t.ammo[o.prize] || 0) + 1; E({ e: 'prize', i: t.i, item: o.prize, src: 'balloon', id, x: Math.round(o.x), y: Math.round(o.y) }); }
+    else if (k === 'qbox') { const t = a; let item = 'quiz'; if (t.isAI) { item = R() < 0.5 ? ENV_PRIZES[Math.floor(R() * ENV_PRIZES.length)] : 'none'; if (item !== 'none' && t.ammo) t.ammo[item] = (t.ammo[item] || 0) + 1; } E({ e: 'prize', i: t.i, item, src: 'qbox', id, x: Math.round(o.x), y: Math.round(o.y) }); }
+    else if (k === 'bossHit') E({ e: 'envhp', id, hp: Math.max(0, o.hp), d: b, x: Math.round(o.x), y: Math.round(o.y) });
+    else if (k === 'bossDown') { goldFor(a, '보스 격추', 500); E({ e: 'prize', i: a.i, item: 'boss', src: 'boss', id, x: Math.round(o.x), y: Math.round(o.y) }); }
+  }
+  S.envView = () => envView(S.env);
+  S.resolveEnv = function () {
+    WSTAT.nuke.r = w.nukeR; S.ev = []; S.proj = []; S.delayed = []; S.t = 0; S.gold = {};
+    const C = { WW, WH, kind: w.kind, R, wind: S.wind, isSolid,
+      spawn: o => S.proj.push(mkP(Object.assign({ owner: ENVO }, o))),
+      text: (x, y, s, c, z) => text(x, y, s, c, z),
+      fill: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 1); E({ e: 'fill', x1, y1, x2, y2 }); },
+      clear: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 0); E({ e: 'clear', x1, y1, x2, y2 }); } };
+    const fired = envTurn(S.env, C, S.twisters.length);
+    const frames = [];
+    const snap = () => frames.push([+S.t.toFixed(3), S.proj.filter(p => !p.dead).map(p => [p.id, Math.round(p.x), Math.round(p.y), p.w, p.mode === 'roll' ? 1 : 0]), tanks.map(t => t.alive ? [Math.round(t.x), Math.round(t.y), +(t.rot || 0).toFixed(2), t.chuteOpen ? 1 : 0] : 0)]);
+    snap(); const dt = 1 / 60; let quiet = 0, step = 0;
+    while (S.t < 20) {
+      S.t += dt; step++;
+      for (const d of S.delayed) { d.t -= dt; if (d.t <= 0) { d.done = true; if (d.boom) explode(d.p); else S.proj.push(d.p); } }
+      S.delayed = S.delayed.filter(d => !d.done);
+      for (const p of S.proj) if (!p.dead) updProj(p, dt);
+      S.proj = S.proj.filter(p => !p.dead);
+      for (const t of tanks) tankPhysics(t, dt);
+      crateFall();
+      if (step % 3 === 0) snap();
+      const busy = S.proj.length || S.delayed.length || tanks.some(t => t.alive && t.air);
+      quiet = busy ? 0 : quiet + dt; if (quiet > 0.4) break;
+    }
+    snap();
+    const out = { fired, dur: +S.t.toFixed(3), frames, ev: S.ev, gold: S.gold };
+    S.ev = null; S.proj = null; S.delayed = null;
+    return out;
+  };
   S.twView = () => S.twisters.map(t => ({ id: t.id, x: Math.round(t.x), base: Math.round(t.base), h: Math.round(t.h), w: t.w, fire: t.fire, life: t.life }));
   function startRoll(p) { let n = 0; while (isSolid(p.x, p.y) && n < 14) { p.y--; n++; } p.mode = 'roll'; p.rollT = 0; const l = surfaceAt(p.x - 12, p.y), r = surfaceAt(p.x + 12, p.y); p.dir = Math.abs(l - r) > 3 ? (l > r ? -1 : 1) : (Math.sign(p.vx) || 1); }
   function updRoll(p, dt) {
@@ -328,6 +506,7 @@ function makeSim(w, tanks, opts) {
     const sp = Math.hypot(p.vx, p.vy); const n = Math.max(1, Math.ceil(sp * dt / 3)); const h = dt / n;
     for (let i = 0; i < n; i++) {
       if (S.twisters.length && twisterStep(p, h, S.twisters, rand, twEvt)) { p.age += h; continue; }
+      if (S.env.list.length || S.env.water != null) { const er = envStep(p, h, S.env, envFx); if (er === 1) { explode(p); return; } if (er === 3) { p.dead = true; E({ e: 'splash', x: Math.round(p.x), y: Math.round(S.env.water) }); return; } }
       const pvy = p.vy; p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h;
       if (p.w === 'mirv' && pvy < 0 && p.vy >= 0) { p.w = 'mirvc'; [-2, -1, 1, 2].forEach(k => S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 55, vy: p.vy, w: 'mirvc', owner: p.owner, age: 1 }))); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 0 }); }
       if (p.w === 'death' && pvy < 0 && p.vy >= 0) { p.w = 'deathc'; for (let k = -5; k <= 5; k++) if (k) S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 42, vy: p.vy + rand(-30, 30), w: 'deathc', owner: p.owner, age: 1 })); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 1 }); }
@@ -345,7 +524,7 @@ function makeSim(w, tanks, opts) {
   function explode(p) {
     if (p.warp) { warpLand(p); return; }
     p.dead = true; const W = WSTAT[p.w];
-    hitCrates(p.x, p.y, W.r + 24, p.owner);
+    if (!p.owner.env) hitCrates(p.x, p.y, W.r + 24, p.owner);
     const sub = (wk, o) => mkP(Object.assign({ x: p.x, y: p.y, vx: 0, vy: 0, w: wk, owner: p.owner, age: 1 }, o));
     if (p.w === 'triple') S.delayed.push({ t: 0.35, p: sub('tri2'), boom: 1 }, { t: 0.75, p: sub('tri3'), boom: 1 });
     if (p.w === 'leap') { p.bounce = (p.bounce || 0) + 1; if (p.bounce < 4) { let y = p.y, k = 0; while (isSolid(p.x, y) && k < 30) { y--; k++; } const q = sub('leap', { y: y - 4, vx: clamp(p.vx * 0.7, -260, 260) + rand(-20, 20), vy: -Math.max(260, Math.abs(p.vy) * 0.6) }); q.bounce = p.bounce; q.age = 0.5; S.delayed.push({ t: 0.05, p: q }); } }
@@ -356,7 +535,8 @@ function makeSim(w, tanks, opts) {
     if (p.dmgX > 1 && hits.length) E({ e: 'text', x: Math.round(p.x), y: Math.round(p.y) - 50, s: '🔥 불꽃 피해 2배!', c: '#ff6b3d', z: 22 });
     carveW(w, p.x, p.y, W.r);
     E({ e: 'boom', x: +p.x.toFixed(2), y: +p.y.toFixed(2), r: W.r, w: p.w });
-    for (const [t, dmg, cov] of hits) hurt(t, dmg, p.owner, cov);
+    envBlast(S.env, p.x, p.y, W.r, W.dmg * (p.owner.dmgMul || 1) * (p.dmgX || 1), p.owner, envFx);
+    for (const [t, dmg, cov] of hits) { hurt(t, dmg, p.owner.env ? null : p.owner, cov); if (t.alive && envOnIce(S.env, t)) { t.vx = (t.x >= p.x ? 1 : -1) * 240; t.vy = -170; t.air = true; t.peak = t.y; t.y -= 2; } }
   }
 
   /* ---- 탱크 낙하 (혼자 하기 tankPhysics와 같음) ---- */
@@ -374,6 +554,7 @@ function makeSim(w, tanks, opts) {
   }
   function tankPhysics(t, dt) {
     if (!t.alive) return;
+    if (S.env.water != null && t.y > S.env.water + 6) { text(t.x, S.env.water - 40, '풍덩! 물에 잠겼어요', '#bfe9ff', 22); killTank(t, 'fall'); return; }
     if (t.spider && spiderPhysics(t, dt)) return;
     if (!t.spider) { let n = 0; while (isSolid(t.x, t.y - 2) && n < 120) { t.y--; n++; } t.rot = 0; }
     const grounded = isSolid(t.x, t.y + 1) || isSolid(t.x - 9, t.y + 1) || isSolid(t.x + 9, t.y + 1);
