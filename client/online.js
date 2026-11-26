@@ -28,6 +28,15 @@ const css=`
 .on-slot.ready{outline:3px solid #22a559}
 .on-slot.t0{border-left:6px solid #3fa7ff}.on-slot.t1{border-left:6px solid #ff5a5f}
 .on-tag{font-size:12px;border-radius:8px;padding:1px 6px;background:rgba(255,255,255,.12);margin-left:4px}
+#cBoard{position:fixed;top:10px;right:10px;width:230px;max-height:calc(100vh - 20px);overflow:auto;background:rgba(12,20,38,.94);border:2px solid #f5c542;border-radius:12px;z-index:40;color:#fff;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+#cBoard .cb-head{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:#f5c542;color:#2a1d00;position:sticky;top:0}
+#cBoard .cb-fold{background:none;border:0;font-size:16px;cursor:pointer;color:#2a1d00}#cBoard.fold .cb-body{display:none}#cBoard.fold .cb-fold{transform:rotate(180deg)}
+#cBoard .cb-body{padding:6px 8px}#cBoard .cb-row{display:flex;align-items:center;gap:6px;padding:3px 2px;border-bottom:1px solid rgba(255,255,255,.08)}
+#cBoard .cb-row.me{background:rgba(245,197,66,.18);border-radius:6px}#cBoard .cb-rk{width:22px;text-align:right;font-weight:900;color:#f5c542}
+#cBoard .cb-tier{font-size:11px;font-weight:800;padding:1px 5px;border-radius:6px;color:#fff;white-space:nowrap;text-shadow:0 1px 1px #000}
+#cBoard .cb-nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#cBoard .cb-sc{font-weight:900;color:#7dffb1}
+#cBoard .cb-note,#cBoard .cb-empty{font-size:11px;color:#9fb0cc;margin-top:5px;text-align:center}
+@media (max-width:820px){#cBoard{width:180px;font-size:12px;top:6px;right:6px}#cBoard:not(.fold) .cb-body{max-height:45vh;overflow:auto}}
 .on-badge{display:inline-block;background:#2b6de8;border-radius:8px;padding:2px 8px;font-weight:800;font-size:13px}
 #onChoose{margin-top:14px}
 `;
@@ -154,6 +163,7 @@ function onMsg(m){
   switch(m.t){
     case 'my_tier':if(ON.you){ON.you.tier=m.tier;renderLobbyOn()}break;
     case 'rank':showBoard(m);break;
+    case 'cboard':ON.cboard=m;renderCBoard();break;
     case 'grades':setVisGrades(m.grades,false);toast('선생님이 고를 수 있는 문제 범위를 바꿨어요',2200);if(ON.room)renderRoom();break;
     case 'hello':if(m.grades)setVisGrades(m.grades,false);ON.you=m.you;ON.channel=m.channel;ON.className=m.className;ON.rooms=m.rooms;ON.online=m.online;$('#olChat').innerHTML='';m.chat.forEach(c=>addChat('#olChat',c));if(m.chatOff)addSys('#olChat','지금은 선생님이 채팅을 꺼 두었어요.');renderLobbyOn();break;
     case 'rooms':ON.rooms=m.rooms;ON.online=m.online;renderLobbyOn();break;
@@ -175,6 +185,15 @@ function addSys(box,t){const el=$(box);const d=document.createElement('div');d.c
 /* ---------- 로비 ---------- */
 function showOnLobby(){if(ON.room){showRoom();return}showScreen('#sOnLobby');$('#sOnLobby').classList.remove('hidden');renderLobbyOn();setTimeout(()=>{if(!$('#sOnLobby').classList.contains('hidden'))tutMaybe('olobby')},1800)}
 ['#sOnLobby','#sOnRoom'].forEach(id=>SCREENS.push(id));
+// ── 우리 반 플레이 점수 순위표 (반 코드로 들어왔을 때만, 화면 오른쪽 위)
+function renderCBoard(){let el=$('#cBoard');const show=ON.channel&&ON.channel.startsWith('class:')&&ON.cboard&&!(G&&G.online)&&(!$('#sOnLobby').classList.contains('hidden')||!$('#sOnRoom').classList.contains('hidden'));
+  if(!show){if(el)el.classList.add('hidden');return}
+  if(!el){el=document.createElement('div');el.id='cBoard';document.body.appendChild(el);el.onclick=e=>{if(e.target.closest('.cb-fold'))el.classList.toggle('fold')}}
+  el.classList.remove('hidden');const m=ON.cboard;
+  const rows=m.list.length?m.list.map(o=>`<div class="cb-row${o.me?' me':''}"><span class="cb-rk">${o.rank}</span><span class="cb-tier" style="background:${o.color}">${esc(o.tier)}</span><span class="cb-nm">${esc(o.player)}</span><span class="cb-sc">${o.score}</span></div>`).join(''):'<div class="cb-empty">아직 경기 기록이 없어요.<br>한 판 하면 순위가 생겨요!</div>';
+  const mine=m.me?(m.me.rank>15?`<div class="cb-row me"><span class="cb-rk">${m.me.rank}</span><span class="cb-tier" style="background:#556">?</span><span class="cb-nm">나</span><span class="cb-sc">${m.me.score}</span></div><div class="cb-note">16위부터는 순위·계급이 나에게만 보여요</div>`:''):'<div class="cb-note">나는 아직 기록이 없어요</div>';
+  el.innerHTML=`<div class="cb-head"><b>🏆 우리 반 플레이 점수</b><button class="cb-fold" title="접기/펴기">▾</button></div><div class="cb-body">${rows}${mine}<div class="cb-note">참여 ${m.of}명 · 점수 = 참여+승리+피해+처치+골드+승률</div></div>`}
+setInterval(renderCBoard,1500);
 function renderLobbyOn(){if(!D)return;fixDataChoice();if($('#olData'))renderDataPicker($('#olData'),D.set.data,v=>{D.set.data=v;saveNow();renderLobbyOn()},false);
   const ri=rankOf(D.honor);
   $('#olWho').innerHTML=`<b>${esc(me)}</b> 님 · ${ON.className?`<span class="on-badge">${esc(ON.className)} 학급 모임방</span>`:'모두의 로비'}`;
@@ -341,6 +360,7 @@ function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
     case 'clear':clearRectT(e.x1,e.y1,e.x2,e.y2);break;
     case 'splash':splashFx(e.x,e.y);break;
     case 'envset':{const o=G.env&&G.env.list.find(o=>o.id===e.id);if(o)o.hp=e.hp;break}
+    case 'gas':if(G.env){G.env.gas=G.env.gas||[];if(!G.env.gas.some(o=>o.id===e.g.id))G.env.gas.push(e.g)}break;
     case 'envgone':if(G.env)G.env.list=G.env.list.filter(o=>o.id!==e.id);break;
     case 'envhp':{const o=G.env&&G.env.list.find(o=>o.id===e.id);if(o)o.hp=e.hp;addText(e.x+rand(-20,20),e.y-30,'-'+e.d,'#ffb3b3',1,20);break}
     case 'prize':{if(G.env)G.env.list=G.env.list.filter(o=>o.id!==e.id);const mine=e.i===BT.myI&&!G.me.isAI;const nm=t?t.name:'';
@@ -408,6 +428,7 @@ window.onlineFire=function(ang,pow,w){if(!G||G.state!=='aim'||G.cur!==G.me)retur
   if(G.weapon!=='basic'&&!haveAmmo(me2,G.weapon))G.weapon='basic';
   me2.angle=ang;me2.lastPow=pow;G.ghost=null;G.state='sent';
   send({t:'b_fire',a:+ang.toFixed(4),pw:pow,w,x:+me2.x.toFixed(1),y:+me2.y.toFixed(1),dbl:!!w2,w2:w2||undefined,warp:!!warp});updateHud()};
+window.onlineSkip=function(){if(!G||G.state!=='aim'||G.cur!==G.me)return;const t=G.me;G.ghost=null;send({t:'b_pos',x:+t.x.toFixed(1),y:+t.y.toFixed(1),a:+t.angle.toFixed(3),r:+(t.rot||0).toFixed(2)});send({t:'b_skip'});G.state='sent';updateHud()};
 window.onlineItem=function(k){const t=G.me;
   if(ITEMS[k].heal){if(G.repairUsed){toast('수리는 한 턴에 한 번만 할 수 있어요');return}if(t.hp>=t.hpMax){toast('체력이 가득해요');return}}
   if((k==='shield'||k==='rainbow')&&(t.shield||t.rainbow>0)){toast('방어막은 겹쳐 쓸 수 없어요');return}
@@ -480,6 +501,7 @@ window.__onBattle=function(m){switch(m.t){
   case 'b_round':onRound(m.info);break;
   case 'b_turn':onTurn(m);break;
   case 'b_env':onEnv(m);break;
+  case 'b_haz':if(G&&G.online)for(const h of m.hz){const t=G.tanks[h.i];if(!t)continue;t.hp=h.hp;addText(t.x,t.y-46,h.s,h.fire?'#ffb347':'#b6ff6b',1.2,18);if(typeof sfx==='function')sfx('no');updateHud()}break;
   case 'b_pos':if(G&&G.online){const t=G.tanks[m.i];if(t&&t!==G.me){t.tx=m.x;t.ty=m.y;t.angle=m.a;t.rot=m.r}}break;
   case 'b_aim':if(G&&G.online){const t=G.tanks[m.i];BT.aiAim={i:m.i,from:t.angle,to:m.a,pw:m.pw,t:0}}break;
   case 'b_shot':onShot(m);break;

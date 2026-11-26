@@ -250,4 +250,60 @@ function envBlast(st, x, y, r, dmg, owner, on) {
   }
 }
 function envOnIce(st, t) { if (!st) return false; for (const o of st.list) if (o.t === 'ice' && !o.gone && t.x >= o.x1 && t.x <= o.x2) return true; return false; }
-function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water } : null; }
+function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water, gas: (st.gas || []).map(o => Object.assign({}, o)) } : null; }
+
+// ── 유도 미사일: 떨어지는 중에 적 탱크 반경 HOMING_R 안으로 들어오면 그 탱크를 향해 꺾여 날아감 (지형에 부딪히면 그 자리에서 터짐)
+const HOMING_R = 130;
+function homingStep(p, h, tanks, teamMode, onLock) {
+  if (p.w !== 'homing') return false;
+  if (!p.lock) {
+    if (p.vy <= 0 || p.age < 0.25) return false;
+    let best = null, bd = HOMING_R;
+    for (const t of tanks) { if (!t.alive || t === p.owner || (teamMode && p.owner && t.team === p.owner.team)) continue; const d = Math.hypot(p.x - t.x, p.y - (t.y - 10)); if (d < bd) { bd = d; best = t; } }
+    if (!best) return false; p.lock = best; if (onLock) onLock(p, best);
+  }
+  const t = p.lock; if (!t.alive) { p.lock = null; p.w = 'homing0'; return false; }
+  const dx = t.x - p.x, dy = (t.y - 10) - p.y, d = Math.hypot(dx, dy) || 1, sp = Math.max(340, Math.hypot(p.vx, p.vy));
+  const k = Math.min(1, h * 9); p.vx += (dx / d * sp - p.vx) * k; p.vy += (dy / d * sp - p.vy) * k;
+  p.x += p.vx * h; p.y += p.vy * h; p.age += h; return true;
+}
+
+// ── 독가스탄·화염 폭탄: 떨어진 자리에 독구름/불길이 여러 차례 남음 (쏜 사람은 안 다침)
+//   피해 시점: ① 떨어질 때 그 안에 있던 탱크에 기본 피해  ② 그 뒤로는 '피해 받을 사람이 플레이하는 차례'에만,
+//   차례 시작 때 안에 있거나 움직이다 들어가면 → 한 구름(불길)당 한 차례에 한 번만 피해. 시간을 끈다고 피해가 늘지 않음.
+//   독구름은 바람·돌풍 띠·회오리에 크게 밀리고, 불길은 바람에 조금만 밀림
+const GAS = { gasS: { r: 70, dmg: 8, life: 6 }, gasM: { r: 90, dmg: 11, life: 8 }, gasL: { r: 115, dmg: 14, life: 10 },
+  fire: { fire: 1, w: 100, dmg: 10, life: 10 } };
+function gasNew(st, kind, x, y, oi, surf) {
+  const g = GAS[kind]; if (!g || !st) return null; st.gas = st.gas || []; st.seq = st.seq || 1;
+  const o = g.fire ? { id: 'g' + (st.seq++), q: kind, fire: 1, x: Math.round(x), y: Math.round(surf ? surf(x) : y), w: g.w, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} }
+                   : { id: 'g' + (st.seq++), q: kind, x: Math.round(x), y: Math.round(y - g.r * 0.35), r: g.r, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} };
+  st.gas.push(o); return o;
+}
+function gasIn(o, t) { if (o.fire) return Math.abs(t.x - o.x) < o.w + 8 && t.y > o.y - 60 && t.y < o.y + 70; return Math.hypot(t.x - o.x, (t.y - 10) - o.y) < o.r + 10; }
+// 차례가 바뀔 때: 움직이고 줄어들기만 함 (피해 없음)
+function gasTurn(st, C, twisters, surf) {
+  if (!st) return; st.turnNo = (st.turnNo || 0) + 1; if (!st.gas || !st.gas.length) return;
+  for (const o of st.gas) {
+    if (o.fire) { o.x += (C.wind || 0) * 0.12; if (surf) o.y = surf(o.x); }
+    else {
+      o.x += (C.wind || 0) * 0.6;                                                                                   // 바람 (강풍일수록 멀리)
+      for (const e of st.list) if (e.t === 'gust' && !e.gone && Math.abs(o.y - e.y) < e.hh + o.r * 0.5) o.x += e.dir * 110;   // 돌풍 띠
+      for (const t of (twisters || [])) if (Math.abs(t.x - o.x) < t.w + o.r + 40) { o.x += (t.x - o.x) * 0.7; o.y = Math.max(90, o.y - 45); }  // 회오리
+    }
+    o.x = Math.round(o.x); o.y = Math.round(o.y); o.life--;
+    if (o.x < -(o.r || o.w) || o.x > C.WW + (o.r || o.w)) o.life = 0;
+  }
+  st.gas = st.gas.filter(o => o.life > 0);
+}
+// 탱크 i가 구름/불길에 닿았는지 → 피해 목록. land=true면 떨어질 때(기본 피해)
+function gasHits(st, tanks, onlyI, land, gasOnly) {
+  const out = []; if (!st || !st.gas) return out; const no = st.turnNo || 0;
+  for (const o of (gasOnly ? [gasOnly] : st.gas)) tanks.forEach((t, i) => {
+    if (!t.alive || i === o.oi || (onlyI !== undefined && onlyI !== null && i !== onlyI)) return;
+    if (!land && o.hit[i] === no) return;
+    if (gasIn(o, t)) { o.hit[i] = no; out.push({ t, i, o, d: o.dmg }); }
+  });
+  return out;
+}
+function gasLabel(o) { return (o.fire ? '🔥 불길 -' : '☠ 독가스 -') + o.dmg; }

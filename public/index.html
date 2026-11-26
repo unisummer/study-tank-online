@@ -213,6 +213,7 @@ table.res .n{text-align:right}
   </div>
   <div class="br" id="actCtl">
     <button class="wbtn hidden" id="bRopeOff" style="background:#5b3fa8">🕸 거미줄<small>끄기</small></button>
+    <button class="wbtn" id="bEndTurn" style="background:#6b7280">⏭ 턴<small>종료</small></button>
     <button class="wbtn" id="bItem">아이템<small id="itemCount">0</small></button>
     <button class="wbtn" id="bWeapon"><span id="wName">기본포</span><small id="wAmmo">∞</small></button>
   </div>
@@ -448,7 +449,7 @@ const today=()=>{const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 function hashStr(s){let h=2166136261;for(const ch of s){h^=ch.codePointAt(0);h=Math.imul(h,16777619)>>>0}return h.toString(16)}
 const DEFAULT_DATA=()=>({gold:300,honor:0,up:{barrel:0,armor:0,engine:0},
-  ammo:{scatter:3,big:1,dig:2,mirv:0,roller:1,dirtS:2,dirt:1,dirtL:0,triple:0,leap:0,napalm:0,air:0,death:0,nuke:0},
+  ammo:{scatter:3,mid:2,big:1,dig:2,mirv:0,roller:1,dirtS:2,dirt:1,dirtL:0,triple:0,leap:0,napalm:0,air:0,death:0,nuke:0},
   items:{repairS:1,repair:0,repairL:0,scope:1,double:0,shield:0,chute:1,tele:0,warp:1,spider:1,rope:2},
   stats:{games:0,wins:0,beat:0,kills:0,qRight:0,qTotal:0,made:0},
   qDay:'',qToday:0,madeDay:'',madeToday:0,
@@ -750,6 +751,13 @@ function sfx(type){if(!AC||!D||!D.set.sound)return;const t=AC.currentTime;const 
 const WEAPONS={
  basic:{name:'기본포',dmg:30,r:30,desc:'언제나 쓸 수 있는 기본 포탄'},
  scatter:{name:'산탄',dmg:17,r:22,price:90,pack:3,desc:'3갈래로 퍼지는 포탄'},
+ mid:{name:'중형폭탄',dmg:38,r:42,price:70,pack:3,desc:'기본포보다 세고 대형보다 작은 폭발'},
+ multi:{name:'멀티 미사일',dmg:8,r:16,price:150,pack:2,desc:'작은 미사일 9발이 퍼져 날아감 · 고각으로 쏘면 한곳에 몰려 큰 피해, 낮게 쏘면 길쭉한 구멍'},
+ homing:{name:'유도 미사일',dmg:22,r:26,price:160,pack:2,desc:'적 근처로 떨어지면 적에게 꺾여 날아감 · 피해는 조금 약함'},homing0:{name:'유도 미사일',dmg:22,r:26},
+ gasS:{name:'독가스탄 소',dmg:0,r:8,price:90,pack:2,gas:1,desc:'작은 독구름 6차례 · 닿으면 피해 8 · 바람에 잘 밀림 · 나는 안 다침'},
+ gasM:{name:'독가스탄 중',dmg:0,r:9,price:160,pack:2,gas:1,desc:'보통 독구름 8차례 · 닿으면 피해 11 · 바람·회오리에 밀림'},
+ gasL:{name:'독가스탄 대',dmg:0,r:10,price:260,pack:1,gas:1,desc:'큰 독구름 10차례 · 닿으면 피해 14 · 바람·회오리에 밀림'},
+ fire:{name:'화염 폭탄',dmg:12,r:22,price:220,pack:1,gas:1,desc:'떨어진 땅에 불길(폭 200) 10차례 · 그 위에서 플레이하면 피해 10 · 바람에 조금 밀림'},
  big:{name:'대형폭탄',dmg:48,r:56,price:120,pack:2,desc:'넓고 강한 폭발'},
  dig:{name:'땅파기탄',dmg:8,r:78,price:60,pack:3,desc:'큰 구멍! 피해는 약해요'},
  mirv:{name:'분열탄',dmg:20,r:26,price:180,pack:1,desc:'가장 높은 곳에서 5발로 갈라짐'},
@@ -767,7 +775,7 @@ const WEAPONS={
  tri2:{name:'2차 폭발',dmg:24,r:46},tri3:{name:'3차 폭발',dmg:26,r:60},
  bolt:{name:'번개',dmg:18,r:24},meteor:{name:'운석',dmg:26,r:44},lava:{name:'용암',dmg:14,r:22}
 };
-const WORDER=['basic','scatter','big','dig','roller','mirv','dirtS','dirt','dirtL','triple','leap','napalm','air','death','nuke'];
+const WORDER=['basic','scatter','mid','multi','homing','gasS','gasM','gasL','fire','big','dig','roller','mirv','dirtS','dirt','dirtL','triple','leap','napalm','air','death','nuke'];
 const SUPER=['triple','leap','napalm','air','death','nuke','dirtL'];
 const ITEMS={
  repairS:{name:'수리 키트 소',desc:'체력 15 회복 · 수리는 한 턴에 한 번',price:50,heal:15},
@@ -1075,7 +1083,63 @@ function envBlast(st, x, y, r, dmg, owner, on) {
   }
 }
 function envOnIce(st, t) { if (!st) return false; for (const o of st.list) if (o.t === 'ice' && !o.gone && t.x >= o.x1 && t.x <= o.x2) return true; return false; }
-function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water } : null; }
+function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water, gas: (st.gas || []).map(o => Object.assign({}, o)) } : null; }
+
+// ── 유도 미사일: 떨어지는 중에 적 탱크 반경 HOMING_R 안으로 들어오면 그 탱크를 향해 꺾여 날아감 (지형에 부딪히면 그 자리에서 터짐)
+const HOMING_R = 130;
+function homingStep(p, h, tanks, teamMode, onLock) {
+  if (p.w !== 'homing') return false;
+  if (!p.lock) {
+    if (p.vy <= 0 || p.age < 0.25) return false;
+    let best = null, bd = HOMING_R;
+    for (const t of tanks) { if (!t.alive || t === p.owner || (teamMode && p.owner && t.team === p.owner.team)) continue; const d = Math.hypot(p.x - t.x, p.y - (t.y - 10)); if (d < bd) { bd = d; best = t; } }
+    if (!best) return false; p.lock = best; if (onLock) onLock(p, best);
+  }
+  const t = p.lock; if (!t.alive) { p.lock = null; p.w = 'homing0'; return false; }
+  const dx = t.x - p.x, dy = (t.y - 10) - p.y, d = Math.hypot(dx, dy) || 1, sp = Math.max(340, Math.hypot(p.vx, p.vy));
+  const k = Math.min(1, h * 9); p.vx += (dx / d * sp - p.vx) * k; p.vy += (dy / d * sp - p.vy) * k;
+  p.x += p.vx * h; p.y += p.vy * h; p.age += h; return true;
+}
+
+// ── 독가스탄·화염 폭탄: 떨어진 자리에 독구름/불길이 여러 차례 남음 (쏜 사람은 안 다침)
+//   피해 시점: ① 떨어질 때 그 안에 있던 탱크에 기본 피해  ② 그 뒤로는 '피해 받을 사람이 플레이하는 차례'에만,
+//   차례 시작 때 안에 있거나 움직이다 들어가면 → 한 구름(불길)당 한 차례에 한 번만 피해. 시간을 끈다고 피해가 늘지 않음.
+//   독구름은 바람·돌풍 띠·회오리에 크게 밀리고, 불길은 바람에 조금만 밀림
+const GAS = { gasS: { r: 70, dmg: 8, life: 6 }, gasM: { r: 90, dmg: 11, life: 8 }, gasL: { r: 115, dmg: 14, life: 10 },
+  fire: { fire: 1, w: 100, dmg: 10, life: 10 } };
+function gasNew(st, kind, x, y, oi, surf) {
+  const g = GAS[kind]; if (!g || !st) return null; st.gas = st.gas || []; st.seq = st.seq || 1;
+  const o = g.fire ? { id: 'g' + (st.seq++), q: kind, fire: 1, x: Math.round(x), y: Math.round(surf ? surf(x) : y), w: g.w, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} }
+                   : { id: 'g' + (st.seq++), q: kind, x: Math.round(x), y: Math.round(y - g.r * 0.35), r: g.r, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} };
+  st.gas.push(o); return o;
+}
+function gasIn(o, t) { if (o.fire) return Math.abs(t.x - o.x) < o.w + 8 && t.y > o.y - 60 && t.y < o.y + 70; return Math.hypot(t.x - o.x, (t.y - 10) - o.y) < o.r + 10; }
+// 차례가 바뀔 때: 움직이고 줄어들기만 함 (피해 없음)
+function gasTurn(st, C, twisters, surf) {
+  if (!st) return; st.turnNo = (st.turnNo || 0) + 1; if (!st.gas || !st.gas.length) return;
+  for (const o of st.gas) {
+    if (o.fire) { o.x += (C.wind || 0) * 0.12; if (surf) o.y = surf(o.x); }
+    else {
+      o.x += (C.wind || 0) * 0.6;                                                                                   // 바람 (강풍일수록 멀리)
+      for (const e of st.list) if (e.t === 'gust' && !e.gone && Math.abs(o.y - e.y) < e.hh + o.r * 0.5) o.x += e.dir * 110;   // 돌풍 띠
+      for (const t of (twisters || [])) if (Math.abs(t.x - o.x) < t.w + o.r + 40) { o.x += (t.x - o.x) * 0.7; o.y = Math.max(90, o.y - 45); }  // 회오리
+    }
+    o.x = Math.round(o.x); o.y = Math.round(o.y); o.life--;
+    if (o.x < -(o.r || o.w) || o.x > C.WW + (o.r || o.w)) o.life = 0;
+  }
+  st.gas = st.gas.filter(o => o.life > 0);
+}
+// 탱크 i가 구름/불길에 닿았는지 → 피해 목록. land=true면 떨어질 때(기본 피해)
+function gasHits(st, tanks, onlyI, land, gasOnly) {
+  const out = []; if (!st || !st.gas) return out; const no = st.turnNo || 0;
+  for (const o of (gasOnly ? [gasOnly] : st.gas)) tanks.forEach((t, i) => {
+    if (!t.alive || i === o.oi || (onlyI !== undefined && onlyI !== null && i !== onlyI)) return;
+    if (!land && o.hit[i] === no) return;
+    if (gasIn(o, t)) { o.hit[i] = no; out.push({ t, i, o, d: o.dmg }); }
+  });
+  return out;
+}
+function gasLabel(o) { return (o.fire ? '🔥 불길 -' : '☠ 독가스 -') + o.dmg; }
 /*EXTRA_MAPS_END*/
 function plank(c,x,y,w,h){c.fillStyle=MAT.plank;c.beginPath();c.roundRect(x,y,w,h,6);c.fill()}
 function genTerrain(th,kind,nTanks){
@@ -1218,7 +1282,7 @@ function startRound(){
     return {p,team:p.team,name:p.name,color:p.color,isAI:p.isAI,x,y:spawns[i].y,vx:0,vy:0,air:false,peak:0,hp:hpMax,hpMax,alive:true,
       angle:x<WW/2?-Math.PI/4:-Math.PI*3/4,dmgMul:isMe?1+0.03*D.up.barrel:1,fuelMax:isMe?100*(1+0.03*D.up.engine):100,fuel:0,
       shield:false,chute:false,spider:false,rot:0,roundKills:0,lastHit:null,deathOrder:0,
-      ammo:isMe?null:Object.assign({scatter:1,big:1,dig:1,mirv:G.diff>=1?1:0,roller:1,dirtS:1,dirt:G.diff>=2?1:0},{[SUPER[Math.floor(Math.random()*SUPER.length)]]:G.diff>=1?1:0})}});
+      ammo:isMe?null:Object.assign({scatter:1,mid:1,multi:1,homing:1,gasS:1,big:1,dig:1,mirv:G.diff>=1?1:0,roller:1,dirtS:1,dirt:G.diff>=2?1:0},{[SUPER[Math.floor(Math.random()*SUPER.length)]]:G.diff>=1?1:0})}});
   G.me=G.tanks[0];
   G.proj=[];G.delayed=[];G.crates=[];G.twisters=[];G.twSeq=1;G.env=envNew();G.envDone=false;G.envFirst=false;G.flash=0;G.parts=[];G.texts=[];G.ghost=null;G.state='aim';G.turn=-1;G.cycle=1;G.maxCycles=12;G.deathSeq=0;
   G.roundGold={};G.roundGoldTotal=0;G.doubled=false;G.revived=false;G.reviveAsked=false;G.weapon='basic';G.shake=0;G.panHold=0;G.endT=0;
@@ -1236,6 +1300,7 @@ function aliveTeams(){return [...new Set(aliveTanks().map(t=>t.team))]}
 function nextTurn(first){
   if(checkRoundEnd())return;
   if(!G.envDone){G.envDone=true;G.proj=[];G.delayed=[];
+    gasTurn(G.env,envCtx(),G.twisters,surfTopS);{let ni=G.turn;for(let k=0;k<G.tanks.length;k++){ni=(ni+1)%G.tanks.length;if(G.tanks[ni].alive)break}const hs=gasHits(G.env,G.tanks,ni,false);for(const h of hs){hurt(h.t,h.d,G.tanks[h.o.oi]);addText(h.t.x,h.t.y-46,gasLabel(h.o),h.o.fire?'#ffb347':'#b6ff6b',1.2,18)}if(hs.length&&checkRoundEnd())return}
     if(envTurn(G.env,envCtx(),G.twisters.length)){G.state='envfly';G.flyT=0;G.envFirst=!!first;G.panHold=0;return}}
   G.envDone=false;G.envFirst=false;
   const n=G.tanks.length;let idx=G.turn;
@@ -1268,6 +1333,8 @@ function askRevive(){G.state='reviveAsk';$('#hud').classList.add('hidden');close
 function haveAmmo(t,w){if(w==='basic')return true;if(t===G.me)return (D.ammo[w]||0)>0;return (t.ammo[w]||0)>0}
 function useAmmo(t,w){if(w==='basic')return;if(t===G.me){D.ammo[w]--;saveNow()}else t.ammo[w]--}
 function muzzle(t,a){const r=t.rot||0;return{x:t.x+Math.sin(r)*4+Math.cos(a)*22,y:t.y-10-Math.cos(r)*4+Math.sin(a)*22}}
+// 멀티 미사일: 9발을 0.045초 간격으로 쏨. 각 발은 조금씩 더 높게/낮게 + 그만큼 빠르게/느리게 → 낮은 각도면 길게 흩어지고, 70~80° 고각이면 거의 한곳에 모임
+const MULTI_OFF=[0,-1,1,-2,2,-3,3,-4,4].map(k=>k*0.012),MULTI_GAP=0.045;
 function fire(t,ang,pow,w){
   if(G&&G.ropeArm&&t===G.me&&myAimTurn()){ropeShoot(t,ang);return}
   if(t.rope)releaseRope(t,true);
@@ -1277,7 +1344,9 @@ function fire(t,ang,pow,w){
   const v=pow/100*VMAX;const m=muzzle(t,ang);
   const mk=a=>({x:m.x,y:m.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,w,owner:t,age:0,trail:[],mode:'fly'});
   if(warp){const pr=mk(ang);pr.warp=true;G.proj.push(pr)}
-  else if(w==='scatter')[-1,0,1].forEach(i=>G.proj.push(mk(ang+i*0.085)));else G.proj.push(mk(ang));
+  else if(w==='scatter')[-1,0,1].forEach(i=>G.proj.push(mk(ang+i*0.085)));
+  else if(w==='multi'){MULTI_OFF.forEach((d,k)=>{const dir=Math.cos(ang)>=0?-1:1;const a2=ang+dir*d;const p=mk(a2);const f=1+1.73*d;p.vx*=f;p.vy*=f;if(k===0)G.proj.push(p);else G.delayed.push({t:k*MULTI_GAP,p})})}
+  else G.proj.push(mk(ang));
   if(t===G.me)G.proj[0].track=[];
   t.angle=ang;t.lastPow=pow;useAmmo(t,w);G.shots=0;G.state='fly';G.flyT=0;sfx('fire');
   if(t===G.me&&G.double){G.double=false;G.second={t,ang,pow,w:haveAmmo(t,w)?w:'basic',delay:0.45}}
@@ -1292,7 +1361,7 @@ function updProj(p,dt){
   for(let i=0;i<n;i++){
     if(G.twisters&&G.twisters.length&&twisterStep(p,h,G.twisters,rand,twEvt,G.wind)){p.age+=h;if(p.track&&(i%2===0))p.track.push(p.x,p.y);continue}
     if(G.env&&(G.env.list.length||G.env.water!=null)){const er=envStep(p,h,G.env,envFx);if(er===1){explode(p);return}if(er===3){p.dead=true;splashFx(p.x,G.env.water);return}}
-    const pvy=p.vy;p.vx+=G.wind*h;p.vy+=GRAV*h;p.x+=p.vx*h;p.y+=p.vy*h;p.age+=h;
+    const pvy=p.vy;if(!homingStep(p,h,G.tanks,G.teamMode,(q,t)=>{addText(q.x,q.y-22,'🎯 유도!','#7dffb1',0.9,18);sfx('fire')})){p.vx+=G.wind*h;p.vy+=GRAV*h;p.x+=p.vx*h;p.y+=p.vy*h;p.age+=h}
     if(p.w==='mirv'&&pvy<0&&p.vy>=0){p.w='mirvc';[-2,-1,1,2].forEach(k=>G.proj.push({x:p.x,y:p.y,vx:p.vx+k*55,vy:p.vy,w:'mirvc',owner:p.owner,age:1,trail:[],mode:'fly'}));addText(p.x,p.y-20,'분열!','#fff',0.8,16)}
     if(p.w==='death'&&pvy<0&&p.vy>=0){p.w='deathc';for(let k=-5;k<=5;k++)if(k)G.proj.push({x:p.x,y:p.y,vx:p.vx+k*42,vy:p.vy+rand(-30,30),w:'deathc',owner:p.owner,age:1,trail:[],mode:'fly'});addText(p.x,p.y-30,'대분열!!','#ffd43b',1.2,26);G.shake=8}
     if(p.x<-300||p.x>WW+300||p.y>WH+60){p.dead=true;if(p.warp)addText(p.owner.x,p.owner.y-50,'이동 실패 (맵 밖)','#fff',1.2,16);return}
@@ -1305,6 +1374,9 @@ function updProj(p,dt){
 }
 function startRoll(p){let n=0;while(isSolid(p.x,p.y)&&n<14){p.y--;n++}p.mode='roll';p.rollT=0;
   const l=surfaceAt(p.x-12,p.y),r=surfaceAt(p.x+12,p.y);p.dir=Math.abs(l-r)>3?(l>r?-1:1):(Math.sign(p.vx)||1)}
+function surfTopS(x){x=Math.round(Math.max(0,Math.min(WW-1,x)));for(let y=0;y<WH;y++)if(isSolid(x,y))return y;return WH}
+// 자기 차례에 움직이다 독구름/불길에 닿음 → 한 번 피해 (1은 남김)
+function hazTouchS(t){const i=G.tanks.indexOf(t);for(const h of gasHits(G.env,G.tanks,i,false)){const d=Math.min(h.d,t.hp-1);if(d<=0)continue;t.hp-=d;const src=G.tanks[h.o.oi];if(src&&src!==t){t.lastHit=src;if(src.p)src.p.dmg=(src.p.dmg||0)+d}addText(t.x,t.y-46,gasLabel(h.o),h.o.fire?'#ffb347':'#b6ff6b',1.2,18);sfx('no')}}
 function surfaceAt(x,y0){let y=y0-20;while(y<WH&&!isSolid(x,y))y++;return y}
 function updRoll(p,dt){p.rollT+=dt;let steps=Math.round((p.rollSpeed||150)*dt);
   for(let s=0;s<steps;s++){const nx=p.x+p.dir;let ny=p.y,c=0;while(isSolid(nx,ny)&&c<4){ny--;c++}if(isSolid(nx,ny)){explode(p);return}
@@ -1322,6 +1394,7 @@ function warpLand(p){p.dead=true;const o=p.owner;if(!o.alive)return;let x=clamp(
 function explode(p){
   if(p.warp){warpLand(p);return}
   p.dead=true;const W=WEAPONS[p.w];if(p.track&&p.owner===G.me)G.ghost=p.track;
+  if(W.gas&&!p.owner.env&&G.env){const g=gasNew(G.env,p.w,p.x,p.y,G.tanks.indexOf(p.owner),surfTopS);if(g){addText(p.x,p.y-40,g.fire?'🔥 불길!':'☠ 독구름!',g.fire?'#ffb347':'#b6ff6b',1.4,22);for(const h of gasHits(G.env,G.tanks,null,true,g)){hurt(h.t,h.d,G.tanks[h.o.oi]);addText(h.t.x,h.t.y-46,gasLabel(h.o),h.o.fire?'#ffb347':'#b6ff6b',1.2,18)}}}
   if(!p.owner.env)hitCrates(p.x,p.y,W.r+24,p.owner);
   const sub=(w,o)=>Object.assign({x:p.x,y:p.y,vx:0,vy:0,w,owner:p.owner,age:1,trail:[],mode:'fly'},o);
   if(p.w==='triple'){G.delayed.push({t:0.35,p:sub('tri2')},{t:0.75,p:sub('tri3')})}
@@ -1409,7 +1482,15 @@ function iceIdle(t,dt){if(!t.iceV)return;if(t.air||!envOnIce(G.env,t)){t.iceV=0;
   if(isSolid(nx,ny)||isSolid(nx,ny-20)){t.iceV=0;return}t.x=clamp(nx,12,WW-12);t.y=ny;let f=0;while(!isSolid(t.x,t.y+1)&&f<5){t.y++;f++}
   t.iceV*=Math.max(0,1-1.4*dt);if(Math.abs(t.iceV)<10)t.iceV=0}
 function envLabel(x,y,txt,col){ctx.font='800 15px system-ui';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';ctx.strokeText(txt,x,y);ctx.fillStyle=col||'#fff';ctx.fillText(txt,x,y)}
-function drawEnv(st){if(!st||!st.list)return;const now=performance.now()/1000;
+function drawGas(st){if(!st||!st.gas||!st.gas.length)return;const now=performance.now()/1000;
+  for(const o of st.gas){const fade=Math.min(1,o.life/Math.max(1,o.max)*1.4);const mine=G&&G.tanks&&G.tanks[o.oi]===G.me;
+    if(o.fire){for(let x=o.x-o.w;x<=o.x+o.w;x+=11){const y=surfTopS(x);if(y>=WH)continue;const k=Math.sin(now*9+x*0.37),hh=14+8*k+6*Math.sin(now*5+x);ctx.fillStyle=`rgba(255,${120+Math.round(60*k)},30,${0.75*fade})`;ctx.beginPath();ctx.moveTo(x-7,y+2);ctx.quadraticCurveTo(x-4,y-hh*0.6,x,y-hh);ctx.quadraticCurveTo(x+4,y-hh*0.6,x+7,y+2);ctx.fill();ctx.fillStyle=`rgba(255,230,120,${0.7*fade})`;ctx.beginPath();ctx.arc(x,y-3,3,0,7);ctx.fill()}
+      ctx.font='800 15px system-ui';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';const lb2=`🔥 불길 ${o.life}차례${mine?' (내 것)':''}`;const ly=surfTopS(o.x)-34;ctx.strokeText(lb2,o.x,ly);ctx.fillStyle='#ffd08a';ctx.fillText(lb2,o.x,ly);continue}
+    for(let i=0;i<9;i++){const a=i/9*Math.PI*2+now*0.25,rr=o.r*(0.35+0.3*((i*37)%10)/10);const x=o.x+Math.cos(a)*rr*0.9,y=o.y+Math.sin(a)*rr*0.45;
+      ctx.fillStyle=`rgba(${110+(i%3)*20},${200+(i%2)*30},60,${0.16*fade})`;ctx.beginPath();ctx.arc(x,y,o.r*0.55,0,7);ctx.fill()}
+    ctx.strokeStyle=`rgba(182,255,107,${0.35*fade})`;ctx.setLineDash([6,6]);ctx.lineWidth=2;ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,7);ctx.stroke();ctx.setLineDash([]);
+    ctx.font='800 15px system-ui';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';const lb=`☠ 독구름 ${o.life}차례${mine?' (내 것)':''}`;ctx.strokeText(lb,o.x,o.y-o.r*0.6);ctx.fillStyle='#d4ff9a';ctx.fillText(lb,o.x,o.y-o.r*0.6)}}
+function drawEnv(st){drawGas(st);if(!st||!st.list)return;const now=performance.now()/1000;
   for(const o of st.list){if(o.gone)continue;
     switch(o.t){
     case 'cloud':{ctx.fillStyle=o.cd<=1?'#5b5f73':'#8a8fa3';for(const [dx,dy,r] of [[-50,6,30],[-15,-10,40],[25,-4,34],[55,8,26],[0,12,36]]){ctx.beginPath();ctx.arc(o.x+dx,o.y+dy,r,0,7);ctx.fill()}
@@ -1689,6 +1770,13 @@ function aimFrame(){const me=G.me;if(!me)return null;
   const z=clamp(Math.min(cw*0.92/((maxX-minX)*baseScale),ch*0.86/((maxY-minY)*baseScale)),zmin,1.05);
   return {x:(minX+maxX)/2,y:(minY+maxY)/2+ch*0.04/(baseScale*z),z}}
 // 📍 내 탱크 보기(잠깐 내 탱크로 부드럽게 이동) · 🎥 따라가기(차례가 바뀌어도 화면을 내 탱크에 둠)
+// 턴 종료: 쏘지 않고 차례 넘기기 (실수 방지로 두 번 누르기)
+let endArm=0;
+function endMyTurn(){if(!G||G.cur!==G.me||G.state!=='aim'||!G.me.alive)return;const b=$('#bEndTurn');
+  if(performance.now()-endArm>2200){endArm=performance.now();b.innerHTML='⏭ 한 번 더<small>누르면 종료</small>';b.style.background='#d63031';setTimeout(()=>{b.innerHTML='⏭ 턴<small>종료</small>';b.style.background='#6b7280'},2200);return}
+  endArm=0;b.innerHTML='⏭ 턴<small>종료</small>';b.style.background='#6b7280';aim=null;if(typeof releaseRope==='function'&&G.me.rope)releaseRope(G.me);
+  if(G.online&&window.onlineSkip){window.onlineSkip();return}
+  toast('턴을 넘겼어요');G.state='settle';G.settleT=0;G.shots=0}
 function focusMe(){if(!G||!G.me)return;G.panHold=0;G.camManual=false;G.focusT=3.5;if(mapView){cam.z=mapView.z;mapView=null;$('#bMap').textContent='🗺 전체 맵'}}
 function toggleFollow(){if(!D)return;D.set.follow=!D.set.follow;saveNow();updateHud();toast(D.set.follow?'🎥 내 탱크 따라가기 켜짐 — 화면이 내 탱크에 머물러요':'🎥 따라가기 꺼짐 — 차례인 탱크를 보여 줘요',1800);if(D.set.follow)focusMe()}
 function camFollow(dt,tx,ty){const k=1-Math.pow(0.02,dt);
@@ -1818,7 +1906,8 @@ function tintSprite(img,color){const k=img.src.length+'|'+color;if(SPR.tint[k])r
 function addBoomSprite(x,y,r){if(!G)return;(G.booms||(G.booms=[])).push({x,y,r,t0:performance.now()})}
 function drawBooms(){if(!G||!G.booms||!G.booms.length)return;const now=performance.now();
   G.booms=G.booms.filter(b=>{const f=Math.floor((now-b.t0)/(b.r>60?95:70));if(f>=7)return false;const im=SPR.boom[f];if(!sprOk(im))return true;const S=Math.max(44,b.r*2.9)*(f===0?0.7:1);const H=S*im.naturalHeight/im.naturalWidth;ctx.globalAlpha=f>=5?0.85:1;ctx.drawImage(im,b.x-S/2,b.y-H*0.55,S,H);ctx.globalAlpha=1;return true})}
-function shellIdx(w){const W=WEAPONS[w]||{};if(W.dirt||w==='napf')return -1;if(w==='nuke'||w==='death')return 3;if(['mirv','triple','leap','napalm','air','airb','tri2','tri3'].includes(w))return 2;if(['big','dig','deathc'].includes(w))return 1;return 0}
+function shellIdx(w){const W=WEAPONS[w]||{};if(W.dirt||w==='napf')return -1;if(w==='nuke'||w==='death')return 3;if(['mirv','triple','leap','napalm','air','airb','tri2','tri3','multi','homing','homing0'].includes(w))return 2;if(['mid','big','dig','deathc'].includes(w))return 1;return 0}
+const SHELL_SMALL={multi:0.55};
 function drawTank(t){
   ctx.save();const rot=t.rot||0;ctx.translate(t.x,t.y-10);ctx.rotate(rot);ctx.translate(0,10);
   if(!t.alive){ctx.globalAlpha=0.5;ctx.fillStyle='#333';ctx.beginPath();ctx.roundRect(-16,-9,32,9,4);ctx.fill();ctx.restore();return}
@@ -1920,7 +2009,7 @@ function render(){
       if(p.w==='meteor'||p.w==='lava'){const r=p.w==='meteor'?11:7;const g=ctx.createRadialGradient(p.x,p.y,1,p.x,p.y,r*2.2);g.addColorStop(0,'#fff2b0');g.addColorStop(0.4,'#ff8a2a');g.addColorStop(1,'rgba(255,60,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,r*2.2,0,7);ctx.fill();ctx.fillStyle=p.w==='meteor'?'#5a3a2a':'#ff5a1a';ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);ctx.fill();continue}
       const W=WEAPONS[p.w]||{};const si=shellIdx(p.w);if(p.dmgX>1){ctx.fillStyle='rgba(255,120,30,.45)';ctx.beginPath();ctx.arc(p.x,p.y,14+Math.sin(performance.now()/50)*3,0,7);ctx.fill()}
       if(si>=0&&sprOk(SPR.shell[si])){const im=SPR.shell[si];const tl=p.trail.length;let ang=0;if(tl>=4)ang=Math.atan2(p.y-p.trail[tl-3],p.x-p.trail[tl-4]);else if(p.vx||p.vy)ang=Math.atan2(p.vy,p.vx);
-        const L=[13,20,24,34][si],H=L*im.naturalHeight/im.naturalWidth;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(si?ang:0);ctx.drawImage(im,-L*0.6,-H/2,L,H);ctx.restore();continue}
+        const L=[13,20,24,34][si]*(SHELL_SMALL[p.w]||1),H=L*im.naturalHeight/im.naturalWidth;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(si?ang:0);ctx.drawImage(im,-L*0.6,-H/2,L,H);ctx.restore();continue}
       ctx.fillStyle=W.dirt?'#a0703c':p.w==='roller'?'#ddd':p.w==='napf'?'#ff8a00':p.w==='nuke'?'#ffe066':['big','death','triple','air'].includes(p.w)?'#ff6b3d':'#222';ctx.beginPath();ctx.arc(p.x,p.y,p.w==='nuke'?10:['big','death'].includes(p.w)?7:p.w==='napf'?4:5,0,7);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke()}
     drawBooms();
     for(const q of G.parts){ctx.globalAlpha=Math.max(0,q.life/q.max);ctx.fillStyle=q.color;ctx.beginPath();ctx.arc(q.x,q.y,q.size*(0.5+0.5*q.life/q.max),0,7);ctx.fill()}ctx.globalAlpha=1;
@@ -1952,6 +2041,7 @@ function loop(now){
   if(G&&G.online&&window.onlineStep){window.onlineStep(dt,now);render();requestAnimationFrame(loop);return}
   if(G&&G.tanks&&G.state!=='over'){
     for(const t of G.tanks)tankPhysics(t,dt);
+    if(!G.online&&G.state==='aim'&&G.cur&&G.cur.alive&&G.env&&G.env.gas&&G.env.gas.length)hazTouchS(G.cur);
     updCrates(dt);G.flash=Math.max(0,(G.flash||0)-dt);
     if(G.state==='aim'){const t=G.cur;
       if(t===G.me){if(moveDir&&!aim&&!QZ)moveTank(t,moveDir,dt);else{t.crawlDir=0;t.crawlSense=0;iceIdle(t,dt)}if(!QZ&&!COACH&&$('#mMenu').classList.contains('hidden'))G.timer-=dt;if(G.timer<=0){toast('시간 끝! 다음 차례');G.state='settle';G.settleT=0;G.shots=0}
@@ -2120,6 +2210,7 @@ function renderVocab(){if(!D)return;D.vocab=D.vocab||{};if(D.set.engSets===undef
     return `<div class="vc-item ${st}">${ic} <b>${escapeHtml(v.w)}</b> ${escapeHtml(v.k)} <span class="sub">SET ${v.sets.join('·')} · ${VLV[v.lv]}</span></div>`}).join('')}
 $('#bVocab').onclick=()=>openVocab('#sLobby');
 $('#bTut').onclick=()=>tutMaybe('lobby',true);
+$('#bEndTurn').onclick=e=>{e.stopPropagation();endMyTurn()};
 $('#vcBack').onclick=()=>{if(vocabBack==='#sLobby')openLobby();else{showScreen(vocabBack);if(typeof refreshGoldViews==='function')refreshGoldViews()}};
 $('#vcQuiz').onclick=()=>{if(!vocabPool().length){toast('고른 범위에 단어가 없어요');return}openQuiz({title:'📘 영단어 문제 — 맞히면 골드',earn:true,data:'eng',onClose:renderVocab})};
 $('#vcWrong').onclick=()=>{if(!VW.some(v=>vConfused(v.w))){toast('헷갈리는 단어가 없어요! 👍');return}openQuiz({title:'❗ 헷갈리는 단어 다시 풀기',earn:true,data:'eng',onlyWrong:true,onClose:renderVocab})};
@@ -2236,13 +2327,14 @@ window.__gt={get G(){return G},get D(){return D},fire:(a,p,w)=>fire(G.me,a,p,w||
 'use strict';
 const GRAV = 520, VMAX = 950, WINDMAX = 150;
 const WSTAT = {
-  basic: { dmg: 30, r: 30 }, scatter: { dmg: 17, r: 22 }, big: { dmg: 48, r: 56 }, dig: { dmg: 8, r: 78 },
+  basic: { dmg: 30, r: 30 }, scatter: { dmg: 17, r: 22 }, mid: { dmg: 38, r: 42 }, multi: { dmg: 8, r: 16 }, gasS: { dmg: 0, r: 8, gas: 1 }, gasM: { dmg: 0, r: 9, gas: 1 }, gasL: { dmg: 0, r: 10, gas: 1 }, fire: { dmg: 12, r: 22, gas: 1 }, homing: { dmg: 22, r: 26 }, homing0: { dmg: 22, r: 26 }, big: { dmg: 48, r: 56 }, dig: { dmg: 8, r: 78 },
   mirv: { dmg: 20, r: 26 }, roller: { dmg: 34, r: 34 }, dirtS: { dmg: 0, r: 36, dirt: 1 }, dirt: { dmg: 0, r: 62, dirt: 1 },
   dirtL: { dmg: 0, r: 105, dirt: 1 }, triple: { dmg: 24, r: 34 }, leap: { dmg: 22, r: 30 }, napalm: { dmg: 9, r: 16 },
   air: { dmg: 20, r: 30 }, death: { dmg: 28, r: 44 }, nuke: { dmg: 90, r: 430 }, mirvc: { dmg: 20, r: 26 },
   deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
   bolt: { dmg: 18, r: 24 }, meteor: { dmg: 26, r: 44 }, lava: { dmg: 14, r: 22 },
 };
+const MULTI_OFF = [0, -1, 1, -2, 2, -3, 3, -4, 4].map(k => k * 0.012), MULTI_GAP = 0.045;
 const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
 const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
 const CRATE_POOL = [['nuke', 1], ['death', 2], ['air', 3], ['triple', 3], ['napalm', 3], ['leap', 3], ['dirtL', 2], ['gold', 3], ['repair', 2]];
@@ -2505,7 +2597,63 @@ function envBlast(st, x, y, r, dmg, owner, on) {
   }
 }
 function envOnIce(st, t) { if (!st) return false; for (const o of st.list) if (o.t === 'ice' && !o.gone && t.x >= o.x1 && t.x <= o.x2) return true; return false; }
-function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water } : null; }
+function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water, gas: (st.gas || []).map(o => Object.assign({}, o)) } : null; }
+
+// ── 유도 미사일: 떨어지는 중에 적 탱크 반경 HOMING_R 안으로 들어오면 그 탱크를 향해 꺾여 날아감 (지형에 부딪히면 그 자리에서 터짐)
+const HOMING_R = 130;
+function homingStep(p, h, tanks, teamMode, onLock) {
+  if (p.w !== 'homing') return false;
+  if (!p.lock) {
+    if (p.vy <= 0 || p.age < 0.25) return false;
+    let best = null, bd = HOMING_R;
+    for (const t of tanks) { if (!t.alive || t === p.owner || (teamMode && p.owner && t.team === p.owner.team)) continue; const d = Math.hypot(p.x - t.x, p.y - (t.y - 10)); if (d < bd) { bd = d; best = t; } }
+    if (!best) return false; p.lock = best; if (onLock) onLock(p, best);
+  }
+  const t = p.lock; if (!t.alive) { p.lock = null; p.w = 'homing0'; return false; }
+  const dx = t.x - p.x, dy = (t.y - 10) - p.y, d = Math.hypot(dx, dy) || 1, sp = Math.max(340, Math.hypot(p.vx, p.vy));
+  const k = Math.min(1, h * 9); p.vx += (dx / d * sp - p.vx) * k; p.vy += (dy / d * sp - p.vy) * k;
+  p.x += p.vx * h; p.y += p.vy * h; p.age += h; return true;
+}
+
+// ── 독가스탄·화염 폭탄: 떨어진 자리에 독구름/불길이 여러 차례 남음 (쏜 사람은 안 다침)
+//   피해 시점: ① 떨어질 때 그 안에 있던 탱크에 기본 피해  ② 그 뒤로는 '피해 받을 사람이 플레이하는 차례'에만,
+//   차례 시작 때 안에 있거나 움직이다 들어가면 → 한 구름(불길)당 한 차례에 한 번만 피해. 시간을 끈다고 피해가 늘지 않음.
+//   독구름은 바람·돌풍 띠·회오리에 크게 밀리고, 불길은 바람에 조금만 밀림
+const GAS = { gasS: { r: 70, dmg: 8, life: 6 }, gasM: { r: 90, dmg: 11, life: 8 }, gasL: { r: 115, dmg: 14, life: 10 },
+  fire: { fire: 1, w: 100, dmg: 10, life: 10 } };
+function gasNew(st, kind, x, y, oi, surf) {
+  const g = GAS[kind]; if (!g || !st) return null; st.gas = st.gas || []; st.seq = st.seq || 1;
+  const o = g.fire ? { id: 'g' + (st.seq++), q: kind, fire: 1, x: Math.round(x), y: Math.round(surf ? surf(x) : y), w: g.w, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} }
+                   : { id: 'g' + (st.seq++), q: kind, x: Math.round(x), y: Math.round(y - g.r * 0.35), r: g.r, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} };
+  st.gas.push(o); return o;
+}
+function gasIn(o, t) { if (o.fire) return Math.abs(t.x - o.x) < o.w + 8 && t.y > o.y - 60 && t.y < o.y + 70; return Math.hypot(t.x - o.x, (t.y - 10) - o.y) < o.r + 10; }
+// 차례가 바뀔 때: 움직이고 줄어들기만 함 (피해 없음)
+function gasTurn(st, C, twisters, surf) {
+  if (!st) return; st.turnNo = (st.turnNo || 0) + 1; if (!st.gas || !st.gas.length) return;
+  for (const o of st.gas) {
+    if (o.fire) { o.x += (C.wind || 0) * 0.12; if (surf) o.y = surf(o.x); }
+    else {
+      o.x += (C.wind || 0) * 0.6;                                                                                   // 바람 (강풍일수록 멀리)
+      for (const e of st.list) if (e.t === 'gust' && !e.gone && Math.abs(o.y - e.y) < e.hh + o.r * 0.5) o.x += e.dir * 110;   // 돌풍 띠
+      for (const t of (twisters || [])) if (Math.abs(t.x - o.x) < t.w + o.r + 40) { o.x += (t.x - o.x) * 0.7; o.y = Math.max(90, o.y - 45); }  // 회오리
+    }
+    o.x = Math.round(o.x); o.y = Math.round(o.y); o.life--;
+    if (o.x < -(o.r || o.w) || o.x > C.WW + (o.r || o.w)) o.life = 0;
+  }
+  st.gas = st.gas.filter(o => o.life > 0);
+}
+// 탱크 i가 구름/불길에 닿았는지 → 피해 목록. land=true면 떨어질 때(기본 피해)
+function gasHits(st, tanks, onlyI, land, gasOnly) {
+  const out = []; if (!st || !st.gas) return out; const no = st.turnNo || 0;
+  for (const o of (gasOnly ? [gasOnly] : st.gas)) tanks.forEach((t, i) => {
+    if (!t.alive || i === o.oi || (onlyI !== undefined && onlyI !== null && i !== onlyI)) return;
+    if (!land && o.hit[i] === no) return;
+    if (gasIn(o, t)) { o.hit[i] = no; out.push({ t, i, o, d: o.dmg }); }
+  });
+  return out;
+}
+function gasLabel(o) { return (o.fire ? '🔥 불길 -' : '☠ 독가스 -') + o.dmg; }
 /*EXTRA_MAPS_END*/
 /* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
 function genWorld(seed, kind, nTanks) {
@@ -2694,13 +2842,17 @@ function makeSim(w, tanks, opts) {
     else if (k === 'bossDown') { goldFor(a, '보스 격추', 500); E({ e: 'prize', i: a.i, item: 'boss', src: 'boss', id, x: Math.round(o.x), y: Math.round(o.y) }); }
   }
   S.envView = () => envView(S.env);
-  S.resolveEnv = function () {
+  // 자기 차례에 움직이다 독구름/불길에 들어감 → 한 번 피해 (이걸로는 죽지 않고 1은 남김)
+  S.hazTouch = function (i) { const out = []; for (const h of gasHits(S.env, tanks, i, false)) { const t = h.t; const d = Math.min(h.d, t.hp - 1); if (d <= 0) continue; t.hp -= d; const src = tanks[h.o.oi]; if (src && src !== t) { t.lastHit = src; src.dmgDealt = (src.dmgDealt || 0) + d; } out.push({ i, d, hp: t.hp, x: Math.round(t.x), y: Math.round(t.y), s: gasLabel(h.o), fire: h.o.fire ? 1 : 0, src: h.o.oi }); } return out; };
+  S.resolveEnv = function (nextI) {
     WSTAT.nuke.r = w.nukeR; S.ev = []; S.proj = []; S.delayed = []; S.t = 0; S.gold = {};
     const C = { WW, WH, kind: w.kind, R, wind: S.wind, isSolid,
       spawn: o => S.proj.push(mkP(Object.assign({ owner: ENVO }, o))),
       text: (x, y, s, c, z) => text(x, y, s, c, z),
       fill: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 1); E({ e: 'fill', x1, y1, x2, y2 }); },
       clear: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 0); E({ e: 'clear', x1, y1, x2, y2 }); } };
+    gasTurn(S.env, C, S.twisters, surfTop);
+    if (nextI !== undefined && nextI !== null && tanks[nextI]) for (const h of gasHits(S.env, tanks, nextI, false)) { hurt(h.t, h.d, tanks[h.o.oi]); text(h.t.x, h.t.y - 46, gasLabel(h.o), h.o.fire ? '#ffb347' : '#b6ff6b', 18); }
     const fired = envTurn(S.env, C, S.twisters.length);
     const frames = [];
     const snap = () => frames.push([+S.t.toFixed(3), S.proj.filter(p => !p.dead).map(p => [p.id, Math.round(p.x), Math.round(p.y), p.w, p.mode === 'roll' ? 1 : 0]), tanks.map(t => t.alive ? [Math.round(t.x), Math.round(t.y), +(t.rot || 0).toFixed(2), t.chuteOpen ? 1 : 0] : 0)]);
@@ -2740,7 +2892,7 @@ function makeSim(w, tanks, opts) {
     for (let i = 0; i < n; i++) {
       if (S.twisters.length && twisterStep(p, h, S.twisters, rand, twEvt, S.wind)) { p.age += h; continue; }
       if (S.env.list.length || S.env.water != null) { const er = envStep(p, h, S.env, envFx); if (er === 1) { explode(p); return; } if (er === 3) { p.dead = true; E({ e: 'splash', x: Math.round(p.x), y: Math.round(S.env.water) }); return; } }
-      const pvy = p.vy; p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h;
+      const pvy = p.vy; if (!homingStep(p, h, tanks, S.teamMode, q => text(q.x, q.y - 22, '🎯 유도!', '#7dffb1', 18))) { p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h; }
       if (p.w === 'mirv' && pvy < 0 && p.vy >= 0) { p.w = 'mirvc'; [-2, -1, 1, 2].forEach(k => S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 55, vy: p.vy, w: 'mirvc', owner: p.owner, age: 1 }))); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 0 }); }
       if (p.w === 'death' && pvy < 0 && p.vy >= 0) { p.w = 'deathc'; for (let k = -5; k <= 5; k++) if (k) S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 42, vy: p.vy + rand(-30, 30), w: 'deathc', owner: p.owner, age: 1 })); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 1 }); }
       if (p.x < -300 || p.x > WW + 300 || p.y > WH + 60) { p.dead = true; if (p.warp) text(p.owner.x, p.owner.y - 50, '이동 실패 (맵 밖)'); return; }
@@ -2757,6 +2909,7 @@ function makeSim(w, tanks, opts) {
   function explode(p) {
     if (p.warp) { warpLand(p); return; }
     p.dead = true; const W = WSTAT[p.w];
+    if (W.gas && !p.owner.env) { const g = gasNew(S.env, p.w, p.x, p.y, tanks.indexOf(p.owner), surfTop); if (g) { E({ e: 'gas', g: Object.assign({}, g, { hit: undefined }) }); text(p.x, p.y - 40, g.fire ? '🔥 불길!' : '☠ 독구름!', g.fire ? '#ffb347' : '#b6ff6b', 22); for (const h of gasHits(S.env, tanks, null, true, g)) { hurt(h.t, h.d, tanks[h.o.oi]); text(h.t.x, h.t.y - 46, gasLabel(h.o), h.o.fire ? '#ffb347' : '#b6ff6b', 18); } } }
     if (!p.owner.env) hitCrates(p.x, p.y, W.r + 24, p.owner);
     const sub = (wk, o) => mkP(Object.assign({ x: p.x, y: p.y, vx: 0, vy: 0, w: wk, owner: p.owner, age: 1 }, o));
     if (p.w === 'triple') S.delayed.push({ t: 0.35, p: sub('tri2'), boom: 1 }, { t: 0.75, p: sub('tri3'), boom: 1 });
@@ -2816,7 +2969,9 @@ function makeSim(w, tanks, opts) {
     const mk = a => mkP({ x: m.x, y: m.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, w: wk, owner: shooter });
     shooter.angle = ang;
     if (flags.warp) { const pr = mk(ang); pr.w = 'basic'; pr.warp = true; S.proj.push(pr); }
-    else if (wk === 'scatter') [-1, 0, 1].forEach(i => S.proj.push(mk(ang + i * 0.085))); else S.proj.push(mk(ang));
+    else if (wk === 'scatter') [-1, 0, 1].forEach(i => S.proj.push(mk(ang + i * 0.085)));
+    else if (wk === 'multi') MULTI_OFF.forEach((d, k) => { const dir = Math.cos(ang) >= 0 ? -1 : 1; const p = mk(ang + dir * d); const f = 1 + 1.73 * d; p.vx *= f; p.vy *= f; if (k === 0) S.proj.push(p); else S.delayed.push({ t: k * MULTI_GAP, p }); });
+    else S.proj.push(mk(ang));
     let second = flags.double && !flags.warp ? { delay: 0.45, w: flags.secondW || wk } : null;
     const dt = 1 / 60; let quiet = 0, step = 0;
     const snap = () => {
@@ -2910,6 +3065,15 @@ const css=`
 .on-slot.ready{outline:3px solid #22a559}
 .on-slot.t0{border-left:6px solid #3fa7ff}.on-slot.t1{border-left:6px solid #ff5a5f}
 .on-tag{font-size:12px;border-radius:8px;padding:1px 6px;background:rgba(255,255,255,.12);margin-left:4px}
+#cBoard{position:fixed;top:10px;right:10px;width:230px;max-height:calc(100vh - 20px);overflow:auto;background:rgba(12,20,38,.94);border:2px solid #f5c542;border-radius:12px;z-index:40;color:#fff;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+#cBoard .cb-head{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:#f5c542;color:#2a1d00;position:sticky;top:0}
+#cBoard .cb-fold{background:none;border:0;font-size:16px;cursor:pointer;color:#2a1d00}#cBoard.fold .cb-body{display:none}#cBoard.fold .cb-fold{transform:rotate(180deg)}
+#cBoard .cb-body{padding:6px 8px}#cBoard .cb-row{display:flex;align-items:center;gap:6px;padding:3px 2px;border-bottom:1px solid rgba(255,255,255,.08)}
+#cBoard .cb-row.me{background:rgba(245,197,66,.18);border-radius:6px}#cBoard .cb-rk{width:22px;text-align:right;font-weight:900;color:#f5c542}
+#cBoard .cb-tier{font-size:11px;font-weight:800;padding:1px 5px;border-radius:6px;color:#fff;white-space:nowrap;text-shadow:0 1px 1px #000}
+#cBoard .cb-nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#cBoard .cb-sc{font-weight:900;color:#7dffb1}
+#cBoard .cb-note,#cBoard .cb-empty{font-size:11px;color:#9fb0cc;margin-top:5px;text-align:center}
+@media (max-width:820px){#cBoard{width:180px;font-size:12px;top:6px;right:6px}#cBoard:not(.fold) .cb-body{max-height:45vh;overflow:auto}}
 .on-badge{display:inline-block;background:#2b6de8;border-radius:8px;padding:2px 8px;font-weight:800;font-size:13px}
 #onChoose{margin-top:14px}
 `;
@@ -3036,6 +3200,7 @@ function onMsg(m){
   switch(m.t){
     case 'my_tier':if(ON.you){ON.you.tier=m.tier;renderLobbyOn()}break;
     case 'rank':showBoard(m);break;
+    case 'cboard':ON.cboard=m;renderCBoard();break;
     case 'grades':setVisGrades(m.grades,false);toast('선생님이 고를 수 있는 문제 범위를 바꿨어요',2200);if(ON.room)renderRoom();break;
     case 'hello':if(m.grades)setVisGrades(m.grades,false);ON.you=m.you;ON.channel=m.channel;ON.className=m.className;ON.rooms=m.rooms;ON.online=m.online;$('#olChat').innerHTML='';m.chat.forEach(c=>addChat('#olChat',c));if(m.chatOff)addSys('#olChat','지금은 선생님이 채팅을 꺼 두었어요.');renderLobbyOn();break;
     case 'rooms':ON.rooms=m.rooms;ON.online=m.online;renderLobbyOn();break;
@@ -3057,6 +3222,15 @@ function addSys(box,t){const el=$(box);const d=document.createElement('div');d.c
 /* ---------- 로비 ---------- */
 function showOnLobby(){if(ON.room){showRoom();return}showScreen('#sOnLobby');$('#sOnLobby').classList.remove('hidden');renderLobbyOn();setTimeout(()=>{if(!$('#sOnLobby').classList.contains('hidden'))tutMaybe('olobby')},1800)}
 ['#sOnLobby','#sOnRoom'].forEach(id=>SCREENS.push(id));
+// ── 우리 반 플레이 점수 순위표 (반 코드로 들어왔을 때만, 화면 오른쪽 위)
+function renderCBoard(){let el=$('#cBoard');const show=ON.channel&&ON.channel.startsWith('class:')&&ON.cboard&&!(G&&G.online)&&(!$('#sOnLobby').classList.contains('hidden')||!$('#sOnRoom').classList.contains('hidden'));
+  if(!show){if(el)el.classList.add('hidden');return}
+  if(!el){el=document.createElement('div');el.id='cBoard';document.body.appendChild(el);el.onclick=e=>{if(e.target.closest('.cb-fold'))el.classList.toggle('fold')}}
+  el.classList.remove('hidden');const m=ON.cboard;
+  const rows=m.list.length?m.list.map(o=>`<div class="cb-row${o.me?' me':''}"><span class="cb-rk">${o.rank}</span><span class="cb-tier" style="background:${o.color}">${esc(o.tier)}</span><span class="cb-nm">${esc(o.player)}</span><span class="cb-sc">${o.score}</span></div>`).join(''):'<div class="cb-empty">아직 경기 기록이 없어요.<br>한 판 하면 순위가 생겨요!</div>';
+  const mine=m.me?(m.me.rank>15?`<div class="cb-row me"><span class="cb-rk">${m.me.rank}</span><span class="cb-tier" style="background:#556">?</span><span class="cb-nm">나</span><span class="cb-sc">${m.me.score}</span></div><div class="cb-note">16위부터는 순위·계급이 나에게만 보여요</div>`:''):'<div class="cb-note">나는 아직 기록이 없어요</div>';
+  el.innerHTML=`<div class="cb-head"><b>🏆 우리 반 플레이 점수</b><button class="cb-fold" title="접기/펴기">▾</button></div><div class="cb-body">${rows}${mine}<div class="cb-note">참여 ${m.of}명 · 점수 = 참여+승리+피해+처치+골드+승률</div></div>`}
+setInterval(renderCBoard,1500);
 function renderLobbyOn(){if(!D)return;fixDataChoice();if($('#olData'))renderDataPicker($('#olData'),D.set.data,v=>{D.set.data=v;saveNow();renderLobbyOn()},false);
   const ri=rankOf(D.honor);
   $('#olWho').innerHTML=`<b>${esc(me)}</b> 님 · ${ON.className?`<span class="on-badge">${esc(ON.className)} 학급 모임방</span>`:'모두의 로비'}`;
@@ -3223,6 +3397,7 @@ function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
     case 'clear':clearRectT(e.x1,e.y1,e.x2,e.y2);break;
     case 'splash':splashFx(e.x,e.y);break;
     case 'envset':{const o=G.env&&G.env.list.find(o=>o.id===e.id);if(o)o.hp=e.hp;break}
+    case 'gas':if(G.env){G.env.gas=G.env.gas||[];if(!G.env.gas.some(o=>o.id===e.g.id))G.env.gas.push(e.g)}break;
     case 'envgone':if(G.env)G.env.list=G.env.list.filter(o=>o.id!==e.id);break;
     case 'envhp':{const o=G.env&&G.env.list.find(o=>o.id===e.id);if(o)o.hp=e.hp;addText(e.x+rand(-20,20),e.y-30,'-'+e.d,'#ffb3b3',1,20);break}
     case 'prize':{if(G.env)G.env.list=G.env.list.filter(o=>o.id!==e.id);const mine=e.i===BT.myI&&!G.me.isAI;const nm=t?t.name:'';
@@ -3290,6 +3465,7 @@ window.onlineFire=function(ang,pow,w){if(!G||G.state!=='aim'||G.cur!==G.me)retur
   if(G.weapon!=='basic'&&!haveAmmo(me2,G.weapon))G.weapon='basic';
   me2.angle=ang;me2.lastPow=pow;G.ghost=null;G.state='sent';
   send({t:'b_fire',a:+ang.toFixed(4),pw:pow,w,x:+me2.x.toFixed(1),y:+me2.y.toFixed(1),dbl:!!w2,w2:w2||undefined,warp:!!warp});updateHud()};
+window.onlineSkip=function(){if(!G||G.state!=='aim'||G.cur!==G.me)return;const t=G.me;G.ghost=null;send({t:'b_pos',x:+t.x.toFixed(1),y:+t.y.toFixed(1),a:+t.angle.toFixed(3),r:+(t.rot||0).toFixed(2)});send({t:'b_skip'});G.state='sent';updateHud()};
 window.onlineItem=function(k){const t=G.me;
   if(ITEMS[k].heal){if(G.repairUsed){toast('수리는 한 턴에 한 번만 할 수 있어요');return}if(t.hp>=t.hpMax){toast('체력이 가득해요');return}}
   if((k==='shield'||k==='rainbow')&&(t.shield||t.rainbow>0)){toast('방어막은 겹쳐 쓸 수 없어요');return}
@@ -3362,6 +3538,7 @@ window.__onBattle=function(m){switch(m.t){
   case 'b_round':onRound(m.info);break;
   case 'b_turn':onTurn(m);break;
   case 'b_env':onEnv(m);break;
+  case 'b_haz':if(G&&G.online)for(const h of m.hz){const t=G.tanks[h.i];if(!t)continue;t.hp=h.hp;addText(t.x,t.y-46,h.s,h.fire?'#ffb347':'#b6ff6b',1.2,18);if(typeof sfx==='function')sfx('no');updateHud()}break;
   case 'b_pos':if(G&&G.online){const t=G.tanks[m.i];if(t&&t!==G.me){t.tx=m.x;t.ty=m.y;t.angle=m.a;t.rot=m.r}}break;
   case 'b_aim':if(G&&G.online){const t=G.tanks[m.i];BT.aiAim={i:m.i,from:t.angle,to:m.a,pw:m.pw,t:0}}break;
   case 'b_shot':onShot(m);break;

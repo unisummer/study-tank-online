@@ -23,6 +23,16 @@ function scoreOf(v) {
   return { score: winPt + playPt, winPt, playPt, wr: Math.round(wr * 100), weight, g };
 }
 
+// ── 플레이 점수 (수업용 반 순위표) — 레이팅과 달리 격차가 크지 않게, 매 경기 점수를 더해 감
+//   한 경기 = 참여 10 + 승리 점수(최대 20) + 피해량(10당 1, 최대 30) + 처치(1명 5, 최대 15) + 전투 골드(30G당 1, 최대 15)  → 한 경기 최대 90
+//   플레이 점수 = 경기 점수 합 + 승률 보너스(승률 × 30)
+const PS = { join: 10, win: 20, dmgPer: 10, dmgMax: 30, kill: 5, killMax: 15, goldPer: 30, goldMax: 15, wrBonus: 30 };
+function matchPlayScore(beat, dmg, kills, gold) {
+  const parts = { 참여: PS.join, 승리: Math.round(PS.win * beat), 피해: Math.min(PS.dmgMax, Math.round((dmg || 0) / PS.dmgPer)), 처치: Math.min(PS.killMax, (kills || 0) * PS.kill), 골드: Math.min(PS.goldMax, Math.round((gold || 0) / PS.goldPer)) };
+  return { total: Object.values(parts).reduce((a, b) => a + b, 0), parts };
+}
+function playScoreOf(v) { if (!v || !v.pg) return 0; return (v.ps || 0) + Math.round(PS.wrBonus * (v.pw || 0) / v.pg); }
+
 function makeRatings(store) {
   let R = {}; let dirty = false; let cache = null;
   const load = async () => { try { const v = await store.kvGet('ratings'); if (v) R = JSON.parse(v); } catch (e) { console.error('ratings load', e.message); } };
@@ -45,7 +55,7 @@ function makeRatings(store) {
   }
 
   // 경기 결과 반영. st: [{uid, name, team, points}] (점수 높은 순), teamMode, teamWins
-  function apply(st, teamMode, teamWins) {
+  function apply(st, teamMode, teamWins, cls) {
     const humans = st.filter(p => p.uid); if (!humans.length) return {};
     const before = {}; for (const p of humans) before[p.uid] = tierOf(p.uid);
     const n = st.length;
@@ -54,13 +64,25 @@ function makeRatings(store) {
       if (teamMode) beat = teamWins[0] === teamWins[1] ? 0.5 : (teamWins[p.team] > teamWins[1 - p.team] ? 1 : 0);
       else { const lower = st.filter(o => o.points < p.points).length, same = st.filter(o => o !== p && o.points === p.points).length; beat = n > 1 ? (lower + same / 2) / (n - 1) : 0; }
       const v = get(p.uid, p.name); v.n = p.name; if (v.b === undefined) v.b = v.w | 0; v.g++; v.b += beat; if (beat >= 1) v.w++;
+      const m = matchPlayScore(beat, p.dmg, p.kills, p.gold); p.play = m;
+      v.ps = (v.ps || 0) + m.total; v.pg = (v.pg || 0) + 1; v.pw = (v.pw || 0) + beat; v.dm = (v.dm || 0) + Math.round(p.dmg || 0); v.k = (v.k || 0) + (p.kills || 0); v.gd = (v.gd || 0) + Math.round(p.gold || 0);
+      if (cls) v.cls = cls;
     }
     cache = null; dirty = true; save();
-    const out = {}; for (const p of humans) { const a = tierOf(p.uid); out[p.uid] = { before: before[p.uid], after: a, d: a.r - before[p.uid].r }; }
+    const out = {}; for (const p of humans) { const a = tierOf(p.uid); out[p.uid] = { before: before[p.uid], after: a, d: a.r - before[p.uid].r, play: p.play, playTotal: playScoreOf(R[p.uid]) }; }
     return out;
   }
   function board(limit) { return ranked().slice().reverse().slice(0, limit || 50).map(o => ({ ...tierOf(o.uid), player: R[o.uid].n })); }
+  // 반 순위표: 그 반에서 플레이한 사람을 플레이 점수로 줄 세움
+  function classBoard(cls, limit) {
+    const all = Object.entries(R).filter(([, v]) => v.cls === cls && v.pg > 0).map(([uid, v]) => ({ uid: +uid, player: v.n, score: playScoreOf(v), games: v.pg, wr: Math.round(100 * (v.pw || 0) / v.pg), dmg: v.dm || 0, kills: v.k || 0, gold: v.gd || 0, sum: v.ps || 0 }))
+      .sort((a, b) => b.score - a.score || b.games - a.games);
+    let rank = 0, prev = null; all.forEach((o, i) => { if (o.score !== prev) { rank = i + 1; prev = o.score; } o.rank = rank; const t = tierOf(o.uid); o.tier = t.name; o.short = t.short; o.color = t.color; });
+    return { list: limit ? all.slice(0, limit) : all, of: all.length, mine: uid => all.find(o => o.uid === uid) || null };
+  }
   function reset() { R = {}; cache = null; dirty = true; save(); }
-  return { load, save, tierOf, apply, board, get, reset };
+  // 그 반 플레이 점수만 0으로 (티어·승률 레이팅은 그대로)
+  function resetClass(cls) { let n = 0; for (const v of Object.values(R)) if (v.cls === cls) { v.ps = 0; v.pg = 0; v.pw = 0; v.dm = 0; v.k = 0; v.gd = 0; n++; } dirty = true; save(); return n; }
+  return { load, save, tierOf, apply, board, get, reset, classBoard, resetClass };
 }
-module.exports = { makeRatings, TIERS, scoreOf, weightFor };
+module.exports = { makeRatings, TIERS, scoreOf, weightFor, PS, matchPlayScore, playScoreOf };

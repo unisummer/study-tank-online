@@ -4,7 +4,7 @@ const E = require('./engine');
 
 const TEAMCOL = [['#3fa7ff', '#5cc8ff', '#2f7fe0', '#8fd3ff'], ['#ff5a5f', '#ff8a5c', '#e0434f', '#ff9fb0']];
 const COLORS = ['#3fa7ff', '#ff5a5f', '#ffb400', '#b06bff', '#2ecc71', '#ff8fd0', '#ff7f27', '#bfbfbf'];
-const AI_AMMO = () => ({ scatter: 1, big: 1, dig: 1, mirv: 1, roller: 1, [E.SUPER[Math.floor(Math.random() * E.SUPER.length)]]: 1 });
+const AI_AMMO = () => ({ scatter: 1, mid: 1, multi: 1, homing: 1, gasS: 1, big: 1, dig: 1, mirv: 1, roller: 1, [E.SUPER[Math.floor(Math.random() * E.SUPER.length)]]: 1 });
 const AWAY_TO_AI = 60000;
 // 라운드 보상 — 사람이 많은 판일수록 크게. 컴퓨터 탱크는 반만 셈 (컴퓨터로 채워 보상 부풀리기 방지)
 const RW = { rankPerBeat: 60, teamWinPerEnemy: 100, teamLosePerEnemy: 30, aliveBonus: 50, aiWeight: 0.5 };
@@ -60,7 +60,7 @@ class Battle {
     this.bc({ t: 'b_round', info: this.roundInfo() });
     this.later(() => this.nextTurn(true), 2500);
   }
-  addGold(goldByI) { for (const i in goldByI) { const g = this.roundGold[i] || (this.roundGold[i] = {}); for (const l in goldByI[i]) g[l] = (g[l] || 0) + goldByI[i][l]; } }
+  addGold(goldByI) { for (const i in goldByI) { const g = this.roundGold[i] || (this.roundGold[i] = {}); for (const l in goldByI[i]) { g[l] = (g[l] || 0) + goldByI[i][l]; if (this.players[i]) this.players[i].goldSum = (this.players[i].goldSum || 0) + goldByI[i][l]; } } }
   weight(list) { return list.reduce((a, o) => a + (this.players[o.i].ai && !this.players[o.i].uid ? RW.aiWeight : 1), 0); }
   fmt(x) { return Number.isInteger(x) ? String(x) : x.toFixed(1); }
   aliveTeams() { return [...new Set(this.tanks.filter(t => t.alive).map(t => t.team))]; }
@@ -69,7 +69,8 @@ class Battle {
     if (this.dead) return;
     if (this.aliveTeams().length <= 1) return this.endRound();
     if (!this.envDone) { // 환경 요소 차례 (번개·운석·화산·밀물 …)
-      this.envDone = true; const r = this.sim.resolveEnv();
+      this.envDone = true; let ni = this.turn; for (let k = 0; k < this.tanks.length; k++) { ni = (ni + 1) % this.tanks.length; if (this.tanks[ni].alive) break; }
+      const r = this.sim.resolveEnv(ni);
       for (const e of r.ev) { if (e.e === 'boom') this.ops.push([e.dirt ? 1 : 0, e.x, e.y, e.r]); else if (e.e === 'fill') this.ops.push([2, e.x1, e.y1, e.x2, e.y2]); else if (e.e === 'clear') this.ops.push([3, e.x1, e.y1, e.x2, e.y2]); }
       this.addGold(r.gold);
       if (r.fired || r.ev.length) this.bc({ t: 'b_env', res: r, final: this.tanks.map(x => this.tankView(x)), env: this.sim.envView() });
@@ -123,6 +124,7 @@ class Battle {
     const t = this.curOf(uid); if (!t) return;
     t.x = clamp(+m.x || t.x, 12, this.world.WW - 12); t.y = clamp(+m.y || t.y, 0, this.world.WH + 40); t.angle = +m.a || t.angle; t.rot = +m.r || 0;
     this.bc({ t: 'b_pos', i: t.i, x: Math.round(t.x), y: Math.round(t.y), a: +t.angle.toFixed(3), r: +(t.rot || 0).toFixed(2), sp: m.sp ? 1 : 0 });
+    const hz = this.sim.hazTouch ? this.sim.hazTouch(t.i) : []; if (hz.length) this.bc({ t: 'b_haz', hz });
     const ev = this.sim.touchCrates(t); if (ev) { for (const e of ev) if (e.e === 'gold') this.addGold({ [e.i]: { [e.l]: e.a } }); this.bc({ t: 'b_ev', ev }); }
   }
   onItem(uid, m) {
@@ -137,6 +139,10 @@ class Battle {
     else if (k === 'scope' || k === 'tele' || k === 'rope') { /* 휴대폰에서만 효과 (순간이동은 위치로 전달) */ }
     else ok = false;
     this.bc({ t: 'b_item', i: t.i, k, ok, tank: this.tankView(t) });
+  }
+  onSkip(uid) { // 턴 종료 버튼: 쏘지 않고 차례 넘기기
+    const t = this.curOf(uid); if (!t) return;
+    this.bc({ t: 'b_sys', text: `${t.name} 턴 종료` }); this.turnId = (this.turnId || 0) + 1; this.nextTurn();
   }
   onFire(uid, m) {
     const t = this.curOf(uid); if (!t) return;
@@ -180,7 +186,7 @@ class Battle {
   }
   matchEnd() {
     this.state = 'over';
-    const st = this.players.map((p, i) => ({ i, name: p.name, uid: p.uid, team: p.team, ai: p.ai, points: p.points, kills: p.kills, dmg: p.dmg })).sort((a, b) => b.points - a.points || b.kills - a.kills);
+    const st = this.players.map((p, i) => ({ i, name: p.name, uid: p.uid, team: p.team, ai: p.ai, points: p.points, kills: p.kills, dmg: p.dmg, gold: p.goldSum || 0 })).sort((a, b) => b.points - a.points || b.kills - a.kills);
     const ratings = this.io.rate ? this.io.rate(st, this.teamMode, this.teamWins) : {};
     this.bc({ t: 'b_match_end', standings: st, teamMode: this.teamMode, teamWins: this.teamWins, ratings });
     this.room.state = 'wait'; this.room.battle = null; this.room.slots.forEach(s => { if (!s.ai) s.ready = false; });

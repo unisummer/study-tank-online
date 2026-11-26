@@ -9,13 +9,14 @@
 'use strict';
 const GRAV = 520, VMAX = 950, WINDMAX = 150;
 const WSTAT = {
-  basic: { dmg: 30, r: 30 }, scatter: { dmg: 17, r: 22 }, big: { dmg: 48, r: 56 }, dig: { dmg: 8, r: 78 },
+  basic: { dmg: 30, r: 30 }, scatter: { dmg: 17, r: 22 }, mid: { dmg: 38, r: 42 }, multi: { dmg: 8, r: 16 }, gasS: { dmg: 0, r: 8, gas: 1 }, gasM: { dmg: 0, r: 9, gas: 1 }, gasL: { dmg: 0, r: 10, gas: 1 }, fire: { dmg: 12, r: 22, gas: 1 }, homing: { dmg: 22, r: 26 }, homing0: { dmg: 22, r: 26 }, big: { dmg: 48, r: 56 }, dig: { dmg: 8, r: 78 },
   mirv: { dmg: 20, r: 26 }, roller: { dmg: 34, r: 34 }, dirtS: { dmg: 0, r: 36, dirt: 1 }, dirt: { dmg: 0, r: 62, dirt: 1 },
   dirtL: { dmg: 0, r: 105, dirt: 1 }, triple: { dmg: 24, r: 34 }, leap: { dmg: 22, r: 30 }, napalm: { dmg: 9, r: 16 },
   air: { dmg: 20, r: 30 }, death: { dmg: 28, r: 44 }, nuke: { dmg: 90, r: 430 }, mirvc: { dmg: 20, r: 26 },
   deathc: { dmg: 28, r: 44 }, airb: { dmg: 20, r: 30 }, napf: { dmg: 9, r: 16 }, tri2: { dmg: 24, r: 46 }, tri3: { dmg: 26, r: 60 },
   bolt: { dmg: 18, r: 24 }, meteor: { dmg: 26, r: 44 }, lava: { dmg: 14, r: 22 },
 };
+const MULTI_OFF = [0, -1, 1, -2, 2, -3, 3, -4, 4].map(k => k * 0.012), MULTI_GAP = 0.045;
 const SUPER = ['triple', 'leap', 'napalm', 'air', 'death', 'nuke', 'dirtL'];
 const MAPKEYS = ['hills', 'sky', 'canyon', 'towers', 'scorched', 'donuts', 'sphinx', 'logbridge', 'island', 'grave', 'wisland', 'wcave', 'cheese'];
 const CRATE_POOL = [['nuke', 1], ['death', 2], ['air', 3], ['triple', 3], ['napalm', 3], ['leap', 3], ['dirtL', 2], ['gold', 3], ['repair', 2]];
@@ -278,7 +279,63 @@ function envBlast(st, x, y, r, dmg, owner, on) {
   }
 }
 function envOnIce(st, t) { if (!st) return false; for (const o of st.list) if (o.t === 'ice' && !o.gone && t.x >= o.x1 && t.x <= o.x2) return true; return false; }
-function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water } : null; }
+function envView(st) { return st ? { list: st.list.filter(o => !o.gone).map(o => Object.assign({}, o)), water: st.water, gas: (st.gas || []).map(o => Object.assign({}, o)) } : null; }
+
+// ── 유도 미사일: 떨어지는 중에 적 탱크 반경 HOMING_R 안으로 들어오면 그 탱크를 향해 꺾여 날아감 (지형에 부딪히면 그 자리에서 터짐)
+const HOMING_R = 130;
+function homingStep(p, h, tanks, teamMode, onLock) {
+  if (p.w !== 'homing') return false;
+  if (!p.lock) {
+    if (p.vy <= 0 || p.age < 0.25) return false;
+    let best = null, bd = HOMING_R;
+    for (const t of tanks) { if (!t.alive || t === p.owner || (teamMode && p.owner && t.team === p.owner.team)) continue; const d = Math.hypot(p.x - t.x, p.y - (t.y - 10)); if (d < bd) { bd = d; best = t; } }
+    if (!best) return false; p.lock = best; if (onLock) onLock(p, best);
+  }
+  const t = p.lock; if (!t.alive) { p.lock = null; p.w = 'homing0'; return false; }
+  const dx = t.x - p.x, dy = (t.y - 10) - p.y, d = Math.hypot(dx, dy) || 1, sp = Math.max(340, Math.hypot(p.vx, p.vy));
+  const k = Math.min(1, h * 9); p.vx += (dx / d * sp - p.vx) * k; p.vy += (dy / d * sp - p.vy) * k;
+  p.x += p.vx * h; p.y += p.vy * h; p.age += h; return true;
+}
+
+// ── 독가스탄·화염 폭탄: 떨어진 자리에 독구름/불길이 여러 차례 남음 (쏜 사람은 안 다침)
+//   피해 시점: ① 떨어질 때 그 안에 있던 탱크에 기본 피해  ② 그 뒤로는 '피해 받을 사람이 플레이하는 차례'에만,
+//   차례 시작 때 안에 있거나 움직이다 들어가면 → 한 구름(불길)당 한 차례에 한 번만 피해. 시간을 끈다고 피해가 늘지 않음.
+//   독구름은 바람·돌풍 띠·회오리에 크게 밀리고, 불길은 바람에 조금만 밀림
+const GAS = { gasS: { r: 70, dmg: 8, life: 6 }, gasM: { r: 90, dmg: 11, life: 8 }, gasL: { r: 115, dmg: 14, life: 10 },
+  fire: { fire: 1, w: 100, dmg: 10, life: 10 } };
+function gasNew(st, kind, x, y, oi, surf) {
+  const g = GAS[kind]; if (!g || !st) return null; st.gas = st.gas || []; st.seq = st.seq || 1;
+  const o = g.fire ? { id: 'g' + (st.seq++), q: kind, fire: 1, x: Math.round(x), y: Math.round(surf ? surf(x) : y), w: g.w, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} }
+                   : { id: 'g' + (st.seq++), q: kind, x: Math.round(x), y: Math.round(y - g.r * 0.35), r: g.r, dmg: g.dmg, life: g.life, max: g.life, oi, hit: {} };
+  st.gas.push(o); return o;
+}
+function gasIn(o, t) { if (o.fire) return Math.abs(t.x - o.x) < o.w + 8 && t.y > o.y - 60 && t.y < o.y + 70; return Math.hypot(t.x - o.x, (t.y - 10) - o.y) < o.r + 10; }
+// 차례가 바뀔 때: 움직이고 줄어들기만 함 (피해 없음)
+function gasTurn(st, C, twisters, surf) {
+  if (!st) return; st.turnNo = (st.turnNo || 0) + 1; if (!st.gas || !st.gas.length) return;
+  for (const o of st.gas) {
+    if (o.fire) { o.x += (C.wind || 0) * 0.12; if (surf) o.y = surf(o.x); }
+    else {
+      o.x += (C.wind || 0) * 0.6;                                                                                   // 바람 (강풍일수록 멀리)
+      for (const e of st.list) if (e.t === 'gust' && !e.gone && Math.abs(o.y - e.y) < e.hh + o.r * 0.5) o.x += e.dir * 110;   // 돌풍 띠
+      for (const t of (twisters || [])) if (Math.abs(t.x - o.x) < t.w + o.r + 40) { o.x += (t.x - o.x) * 0.7; o.y = Math.max(90, o.y - 45); }  // 회오리
+    }
+    o.x = Math.round(o.x); o.y = Math.round(o.y); o.life--;
+    if (o.x < -(o.r || o.w) || o.x > C.WW + (o.r || o.w)) o.life = 0;
+  }
+  st.gas = st.gas.filter(o => o.life > 0);
+}
+// 탱크 i가 구름/불길에 닿았는지 → 피해 목록. land=true면 떨어질 때(기본 피해)
+function gasHits(st, tanks, onlyI, land, gasOnly) {
+  const out = []; if (!st || !st.gas) return out; const no = st.turnNo || 0;
+  for (const o of (gasOnly ? [gasOnly] : st.gas)) tanks.forEach((t, i) => {
+    if (!t.alive || i === o.oi || (onlyI !== undefined && onlyI !== null && i !== onlyI)) return;
+    if (!land && o.hit[i] === no) return;
+    if (gasIn(o, t)) { o.hit[i] = no; out.push({ t, i, o, d: o.dmg }); }
+  });
+  return out;
+}
+function gasLabel(o) { return (o.fire ? '🔥 불길 -' : '☠ 독가스 -') + o.dmg; }
 /*EXTRA_MAPS_END*/
 /* ---------- 맵 만들기 (재료: 1 흙, 2 돌, 3 나무 발판) ---------- */
 function genWorld(seed, kind, nTanks) {
@@ -467,13 +524,17 @@ function makeSim(w, tanks, opts) {
     else if (k === 'bossDown') { goldFor(a, '보스 격추', 500); E({ e: 'prize', i: a.i, item: 'boss', src: 'boss', id, x: Math.round(o.x), y: Math.round(o.y) }); }
   }
   S.envView = () => envView(S.env);
-  S.resolveEnv = function () {
+  // 자기 차례에 움직이다 독구름/불길에 들어감 → 한 번 피해 (이걸로는 죽지 않고 1은 남김)
+  S.hazTouch = function (i) { const out = []; for (const h of gasHits(S.env, tanks, i, false)) { const t = h.t; const d = Math.min(h.d, t.hp - 1); if (d <= 0) continue; t.hp -= d; const src = tanks[h.o.oi]; if (src && src !== t) { t.lastHit = src; src.dmgDealt = (src.dmgDealt || 0) + d; } out.push({ i, d, hp: t.hp, x: Math.round(t.x), y: Math.round(t.y), s: gasLabel(h.o), fire: h.o.fire ? 1 : 0, src: h.o.oi }); } return out; };
+  S.resolveEnv = function (nextI) {
     WSTAT.nuke.r = w.nukeR; S.ev = []; S.proj = []; S.delayed = []; S.t = 0; S.gold = {};
     const C = { WW, WH, kind: w.kind, R, wind: S.wind, isSolid,
       spawn: o => S.proj.push(mkP(Object.assign({ owner: ENVO }, o))),
       text: (x, y, s, c, z) => text(x, y, s, c, z),
       fill: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 1); E({ e: 'fill', x1, y1, x2, y2 }); },
       clear: (x1, y1, x2, y2) => { fillW(w, x1, y1, x2, y2, 0); E({ e: 'clear', x1, y1, x2, y2 }); } };
+    gasTurn(S.env, C, S.twisters, surfTop);
+    if (nextI !== undefined && nextI !== null && tanks[nextI]) for (const h of gasHits(S.env, tanks, nextI, false)) { hurt(h.t, h.d, tanks[h.o.oi]); text(h.t.x, h.t.y - 46, gasLabel(h.o), h.o.fire ? '#ffb347' : '#b6ff6b', 18); }
     const fired = envTurn(S.env, C, S.twisters.length);
     const frames = [];
     const snap = () => frames.push([+S.t.toFixed(3), S.proj.filter(p => !p.dead).map(p => [p.id, Math.round(p.x), Math.round(p.y), p.w, p.mode === 'roll' ? 1 : 0]), tanks.map(t => t.alive ? [Math.round(t.x), Math.round(t.y), +(t.rot || 0).toFixed(2), t.chuteOpen ? 1 : 0] : 0)]);
@@ -513,7 +574,7 @@ function makeSim(w, tanks, opts) {
     for (let i = 0; i < n; i++) {
       if (S.twisters.length && twisterStep(p, h, S.twisters, rand, twEvt, S.wind)) { p.age += h; continue; }
       if (S.env.list.length || S.env.water != null) { const er = envStep(p, h, S.env, envFx); if (er === 1) { explode(p); return; } if (er === 3) { p.dead = true; E({ e: 'splash', x: Math.round(p.x), y: Math.round(S.env.water) }); return; } }
-      const pvy = p.vy; p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h;
+      const pvy = p.vy; if (!homingStep(p, h, tanks, S.teamMode, q => text(q.x, q.y - 22, '🎯 유도!', '#7dffb1', 18))) { p.vx += S.wind * h; p.vy += GRAV * h; p.x += p.vx * h; p.y += p.vy * h; p.age += h; }
       if (p.w === 'mirv' && pvy < 0 && p.vy >= 0) { p.w = 'mirvc'; [-2, -1, 1, 2].forEach(k => S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 55, vy: p.vy, w: 'mirvc', owner: p.owner, age: 1 }))); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 0 }); }
       if (p.w === 'death' && pvy < 0 && p.vy >= 0) { p.w = 'deathc'; for (let k = -5; k <= 5; k++) if (k) S.proj.push(mkP({ x: p.x, y: p.y, vx: p.vx + k * 42, vy: p.vy + rand(-30, 30), w: 'deathc', owner: p.owner, age: 1 })); E({ e: 'split', x: Math.round(p.x), y: Math.round(p.y), big: 1 }); }
       if (p.x < -300 || p.x > WW + 300 || p.y > WH + 60) { p.dead = true; if (p.warp) text(p.owner.x, p.owner.y - 50, '이동 실패 (맵 밖)'); return; }
@@ -530,6 +591,7 @@ function makeSim(w, tanks, opts) {
   function explode(p) {
     if (p.warp) { warpLand(p); return; }
     p.dead = true; const W = WSTAT[p.w];
+    if (W.gas && !p.owner.env) { const g = gasNew(S.env, p.w, p.x, p.y, tanks.indexOf(p.owner), surfTop); if (g) { E({ e: 'gas', g: Object.assign({}, g, { hit: undefined }) }); text(p.x, p.y - 40, g.fire ? '🔥 불길!' : '☠ 독구름!', g.fire ? '#ffb347' : '#b6ff6b', 22); for (const h of gasHits(S.env, tanks, null, true, g)) { hurt(h.t, h.d, tanks[h.o.oi]); text(h.t.x, h.t.y - 46, gasLabel(h.o), h.o.fire ? '#ffb347' : '#b6ff6b', 18); } } }
     if (!p.owner.env) hitCrates(p.x, p.y, W.r + 24, p.owner);
     const sub = (wk, o) => mkP(Object.assign({ x: p.x, y: p.y, vx: 0, vy: 0, w: wk, owner: p.owner, age: 1 }, o));
     if (p.w === 'triple') S.delayed.push({ t: 0.35, p: sub('tri2'), boom: 1 }, { t: 0.75, p: sub('tri3'), boom: 1 });
@@ -589,7 +651,9 @@ function makeSim(w, tanks, opts) {
     const mk = a => mkP({ x: m.x, y: m.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, w: wk, owner: shooter });
     shooter.angle = ang;
     if (flags.warp) { const pr = mk(ang); pr.w = 'basic'; pr.warp = true; S.proj.push(pr); }
-    else if (wk === 'scatter') [-1, 0, 1].forEach(i => S.proj.push(mk(ang + i * 0.085))); else S.proj.push(mk(ang));
+    else if (wk === 'scatter') [-1, 0, 1].forEach(i => S.proj.push(mk(ang + i * 0.085)));
+    else if (wk === 'multi') MULTI_OFF.forEach((d, k) => { const dir = Math.cos(ang) >= 0 ? -1 : 1; const p = mk(ang + dir * d); const f = 1 + 1.73 * d; p.vx *= f; p.vy *= f; if (k === 0) S.proj.push(p); else S.delayed.push({ t: k * MULTI_GAP, p }); });
+    else S.proj.push(mk(ang));
     let second = flags.double && !flags.warp ? { delay: 0.45, w: flags.secondW || wk } : null;
     const dt = 1 / 60; let quiet = 0, step = 0;
     const snap = () => {

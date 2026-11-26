@@ -80,6 +80,8 @@ async function api(req, res, url) {
   if (p.startsWith('/api/admin/')) {
     if (!isAdmin(req)) return send(res, 403, { err: 'admin' });
     if (p === '/api/admin/ranking' && req.method === 'GET') return send(res, 200, { board: RT.board(100) });
+    if (p === '/api/admin/cboard' && req.method === 'GET') { const code = String(url.searchParams.get('code') || '').toUpperCase(); const b = RT.classBoard(code, 0); return send(res, 200, { code, list: b.list, ps: require('./rating.js').PS }); }
+    if (p === '/api/admin/cboard/reset' && req.method === 'POST') { const b = await body(req, 1024); const code = String(b.code || '').toUpperCase().trim(); const n = RT.resetClass(code); sendClassBoards('class:' + code); return send(res, 200, { ok: true, n }); }
     if (p === '/api/admin/ranking/reset' && req.method === 'POST') { RT.reset(); for (const [c2, i2] of conns) S(c2, { t: 'my_tier', tier: RT.tierOf(i2.uid) }); return send(res, 200, { ok: true }); }
     if (p === '/api/admin/classes' && req.method === 'GET') return send(res, 200, { classes: CLASSES, online: onlineList() });
     if (p === '/api/admin/class' && req.method === 'POST') {
@@ -134,6 +136,10 @@ let roomSeq = 1;
 const BAD = ['바보', '멍청', '시발', '씨발', '병신', '개새', '존나', '꺼져', '닥쳐', '죽어', '븅신', 'ㅅㅂ', 'ㅂㅅ', 'ㅈㄴ', '미친'];
 const clean = s => { let o = String(s || '').replace(/[\u0000-\u001f]/g, ' ').slice(0, 120).trim(); for (const w of BAD) o = o.split(w).join('*'.repeat(w.length)); return o; };
 const S = (c, o) => c.send(JSON.stringify(o));
+// 반 순위표(플레이 점수) — 반 채널의 모든 사람에게 상위 15명 + 내 순위
+const CB_TOP = 15;
+function classBoardMsg(code, uid) { const b = RT.classBoard(code, 0); const me = b.mine(uid); return { t: 'cboard', list: b.list.slice(0, CB_TOP).map(({ uid: u, ...o }) => ({ ...o, me: u === uid })), of: b.of, me }; }
+function sendClassBoards(ch) { if (!ch || !ch.startsWith('class:')) return; const code = ch.slice(6); for (const [c, i] of conns) if (i.channel === ch) S(c, classBoardMsg(code, i.uid)); }
 function bcChannel(ch, o, exceptRoom) { const s = JSON.stringify(o); for (const [c, i] of conns) if (i.channel === ch && (!exceptRoom || !i.room)) c.send(s); }
 function bcRoom(r, o) { const s = JSON.stringify(o); for (const [c, i] of conns) if (i.room === r.id) c.send(s); }
 function onlineList(ch) { const seen = new Map(); for (const i of conns.values()) if (ch === undefined || i.channel === ch) seen.set(i.uid, { name: i.name, room: i.room || null, channel: i.channel }); return [...seen.values()]; }
@@ -234,7 +240,7 @@ function onMsg(c, info, raw) {
       r.battle = new Battle(r, {
         bc: o => bcRoom(r, o),
         tier: uid => tierLite(uid),
-        rate: (st, tm, tw) => { const out = RT.apply(st, tm, tw); for (const c2 of conns.keys()) { const i2 = conns.get(c2); if (out[i2.uid]) S(c2, { t: 'my_tier', tier: RT.tierOf(i2.uid) }); } return out; },
+        rate: (st, tm, tw) => { const cls = r.channel && r.channel.startsWith('class:') ? r.channel.slice(6) : ''; const out = RT.apply(st, tm, tw, cls); if (cls) setTimeout(() => sendClassBoards(r.channel), 50); for (const c2 of conns.keys()) { const i2 = conns.get(c2); if (out[i2.uid]) S(c2, { t: 'my_tier', tier: RT.tierOf(i2.uid) }); } return out; },
         online: uid => { for (const i of conns.values()) if (i.uid === uid && i.room === r.id) return true; return false; },
         done: () => { r.slots = r.slots.filter(s => s.ai || [...conns.values()].some(i => i.uid === s.uid && i.room === r.id)); r.slots.forEach(s => s.away = false); if (!r.slots.some(s => !s.ai)) { ROOMS.delete(r.id); pushLobby(r.channel); return; } if (!r.slots.some(s => s.uid === r.host)) r.host = r.slots.find(s => !s.ai).uid; r.slots.forEach(s => { if (!s.ai) s.ready = false; }); pushRoom(r); bcRoom(r, { t: 'sys', text: '경기가 끝나 준비가 모두 풀렸어요. 상점·문제 풀기를 마치고 다시 「준비」를 누르면 방장이 시작해요.' }); },
       });
@@ -244,10 +250,12 @@ function onMsg(c, info, raw) {
     case 'b_pos': if (r && r.battle) r.battle.onPos(info.uid, m); return;
     case 'b_item': if (r && r.battle) r.battle.onItem(info.uid, m); return;
     case 'b_fire': if (r && r.battle) r.battle.onFire(info.uid, m); return;
+    case 'b_skip': if (r && r.battle) r.battle.onSkip(info.uid); return;
     case 'b_fell': if (r && r.battle) r.battle.onFell(info.uid); return;
     case 'b_next': if (r && r.battle) r.battle.onNext(info.uid); return;
     case 'b_sync': if (r && r.battle) r.battle.onBack(info.uid, o => S(c, o)); return;
     case 'rank': S(c, { t: 'rank', me: RT.tierOf(info.uid), board: RT.board(30) }); return;
+    case 'cboard': if (info.channel && info.channel.startsWith('class:')) S(c, classBoardMsg(info.channel.slice(6), info.uid)); return;
     case 'ping': return S(c, { t: 'pong' });
   }
 }
@@ -276,6 +284,7 @@ attach(server, '/ws', async (c, url) => {
       awayTimers.set(info.uid, { room: r.id, t: setTimeout(() => { awayTimers.delete(info.uid); if (r.battle) { const any = [...conns.values()].some(i => i.room === r.id); if (!any) { r.battle.stop(); ROOMS.delete(r.id); pushLobby(r.channel); } return; } leaveRoom(info); }, 60000) }); }
     pushLobby(channel);
   };
+  if (code) setTimeout(() => S(c, classBoardMsg(code, info.uid)), 100);
   S(c, { t: 'hello', grades: gradesOf(channel), you: { id: info.uid, name: info.name, tier: RT.tierOf(info.uid) }, channel, className: code ? CLASSES[code].name : '', rooms: lobbyView(channel), online: onlineList(channel), chat: (CHAT[channel] || []).slice(-30), chatOff: !!CHAT_OFF[channel] });
   if (info.room) { const rr = ROOMS.get(info.room); pushRoom(rr); if (rr.battle) rr.battle.onBack(info.uid, o => S(c, o)); } else pushLobby(channel);
 });
