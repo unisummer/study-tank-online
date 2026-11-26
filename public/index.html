@@ -2929,6 +2929,7 @@ const html=`
     <div><h1 style="font-size:28px">스터디 탱크 <span class="on-badge">온라인</span></h1><div class="sub" id="olWho"></div></div>
     <div style="text-align:right"><div class="goldtag" style="font-size:22px" id="olGold">0G</div><div class="sub" id="olRank"></div></div>
   </div>
+  <div class="card" style="margin-top:10px;padding:10px 12px"><b>문제 데이터 (어떤 문제를 풀까요?)</b> <span class="sub">방에 들어가면 방장이 고른 문제로 바뀌어요</span><div id="olData" style="margin-top:8px"></div></div>
   <div class="row" style="margin-top:10px">
     <button class="btn big green" id="olCreate">방 만들기</button>
     <button class="btn orange claimBtn hidden" id="olClaim"></button><button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
@@ -3052,7 +3053,7 @@ function addSys(box,t){const el=$(box);const d=document.createElement('div');d.c
 /* ---------- 로비 ---------- */
 function showOnLobby(){if(ON.room){showRoom();return}showScreen('#sOnLobby');$('#sOnLobby').classList.remove('hidden');renderLobbyOn();setTimeout(()=>{if(!$('#sOnLobby').classList.contains('hidden'))tutMaybe('olobby')},1800)}
 ['#sOnLobby','#sOnRoom'].forEach(id=>SCREENS.push(id));
-function renderLobbyOn(){if(!D)return;
+function renderLobbyOn(){if(!D)return;fixDataChoice();if($('#olData'))renderDataPicker($('#olData'),D.set.data,v=>{D.set.data=v;saveNow();renderLobbyOn()},false);
   const ri=rankOf(D.honor);
   $('#olWho').innerHTML=`<b>${esc(me)}</b> 님 · ${ON.className?`<span class="on-badge">${esc(ON.className)} 학급 모임방</span>`:'모두의 로비'}`;
   $('#olGold').textContent=D.gold+'G';const T=ON.you&&ON.you.tier;$('#olRank').innerHTML=T?`${tierBadge(T)} `+(T.rank?`${T.of}명 중 ${T.rank}등 · ${T.r}점 · <u>순위표</u>`:`첫 판을 하면 티어가 생겨요 · <u>순위표</u>`):'';void ri;
@@ -3090,7 +3091,7 @@ const rgv=window.refreshGoldViews;refreshGoldViews=function(){rgv();if(window.ON
 /* ---------- 방 ---------- */
 function showRoom(){hideAllScreens();$('#sOnRoom').classList.remove('hidden');setTimeout(()=>{if(ON.room&&!$('#sOnRoom').classList.contains('hidden'))tutMaybe('room')},500)}
 function chipsTo(box,items,cur,cb,enabled){const el=$(box);el.innerHTML='';items.forEach(([v,l])=>{const b=document.createElement('button');b.className='chip'+(String(v)===String(cur)?' on':'');b.textContent=l;b.disabled=!enabled;b.onclick=()=>cb(v);el.appendChild(b)})}
-function renderRoom(){const r=ON.room;if(!r)return;const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);
+function renderRoom(){const r=ON.room;if(!r)return;if(r.data&&DATASETS[r.data]&&D&&D.set.data!==r.data){D.set.data=r.data;saveNow()}const host=r.host===ON.you.id;const mine=r.slots.find(s=>s.uid===ON.you.id);
   $('#orTitle').textContent=`${r.name} (#${r.id})`;
   $('#orInfo').innerHTML=`${r.mode==='team'?'팀전 (4인 1팀까지)':'개인전'} · 맵 ${MAPNAME[r.map]} · 라운드 ${r.rounds} · 턴 ${r.turn}초 · 문제 ${DATANAME[r.data]} · ${r.slots.length}/${r.max}명`+(r.state==='playing'?' · <b>대전 중</b>':'');
   $('#orHostSet').classList.toggle('hidden',!host||r.state!=='wait');
