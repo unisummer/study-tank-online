@@ -461,7 +461,7 @@ function makeSim(w, tanks, opts) {
   const goldFor = (t, label, amt) => { if (!t || t.isAI || amt <= 0) return; const g = S.gold[t.i] || (S.gold[t.i] = {}); g[label] = (g[label] || 0) + amt; E({ e: 'gold', i: t.i, l: label, a: amt }); };
   S.goldFor = goldFor;
 
-  function muzzle(t, a) { const r = t.rot || 0; return { x: t.x + Math.sin(r) * 4 + Math.cos(a) * 22, y: t.y - 10 - Math.cos(r) * 4 + Math.sin(a) * 22 }; }
+  function muzzle(t, a) { const r = t.rot || 0; return { x: t.x + Math.sin(r) * 4 + Math.cos(a) * 22, y: t.y - (t.skin && t.skin !== 'tank' ? 26 : 10) - Math.cos(r) * 4 + Math.sin(a) * 22 }; }
   function tankHit(p) { for (const t of tanks) { if (!t.alive) continue; if (t === p.owner && p.age < 0.3) continue; if (Math.hypot(p.x - t.x, p.y - (t.y - 10)) < 18) return t; } return null; }
   function surfaceAt(x, y0) { let y = y0 - 20; while (y < WH && !isSolid(x, y)) y++; return y; }
   function coverMul(x0, y0, x1, y1) { const L = Math.hypot(x1 - x0, y1 - y0); if (L < 20) return 1; const n = Math.floor(L / 4); let sol = 0, tot = 0; for (let i = 0; i <= n; i++) { const d = i * 4; if (d < 6 || d > L - 14) continue; tot++; if (isSolid(x0 + (x1 - x0) * d / L, y0 + (y1 - y0) * d / L)) sol++; } return tot ? 1 - 0.7 * (sol / tot) : 1; }

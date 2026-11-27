@@ -60,7 +60,7 @@ const html=`
     <div><h1 style="font-size:28px">스터디 탱크 <span class="on-badge">온라인</span></h1><div class="sub" id="olWho"></div></div>
     <div style="text-align:right"><div class="goldtag" style="font-size:22px" id="olGold">0G</div><div class="sub" id="olRank"></div></div>
   </div>
-  <div class="card" style="margin-top:10px;padding:10px 12px"><b>문제 데이터 (어떤 문제를 풀까요?)</b> <span class="sub">방에 들어가면 방장이 고른 문제로 바뀌어요</span><div id="olData" style="margin-top:8px"></div></div>
+  <div class="card" style="margin-top:10px;padding:10px 12px"><b>문제 데이터 (어떤 문제를 풀까요?)</b> <span class="sub">방에 들어가면 방장이 고른 문제로 바뀌어요</span><div id="olData" style="margin-top:8px"></div><div style="margin-top:8px"><b>내 캐릭터</b> <span class="sub">대전에서 내가 탈 캐릭터</span><div class="chips" id="olSkin" style="margin-top:6px"></div></div></div>
   <div class="row" style="margin-top:10px">
     <button class="btn big green" id="olCreate">방 만들기</button>
     <button class="btn orange claimBtn hidden" id="olClaim"></button><button class="btn orange" id="olQuiz">📝 문제 풀고 골드</button><button class="btn" id="olVocab" style="background:#2f7fe0">📘 고1 영단어</button>
@@ -194,7 +194,7 @@ function renderCBoard(){let el=$('#cBoard');const show=ON.channel&&ON.channel.st
   const mine=m.me?(m.me.rank>15?`<div class="cb-row me"><span class="cb-rk">${m.me.rank}</span><span class="cb-tier" style="background:#556">?</span><span class="cb-nm">나</span><span class="cb-sc">${m.me.score}</span></div><div class="cb-note">16위부터는 순위·계급이 나에게만 보여요</div>`:''):'<div class="cb-note">나는 아직 기록이 없어요</div>';
   el.innerHTML=`<div class="cb-head"><b>🏆 우리 반 플레이 점수</b><button class="cb-fold" title="접기/펴기">▾</button></div><div class="cb-body">${rows}${mine}<div class="cb-note">참여 ${m.of}명 · 점수 = 참여+승리+피해+처치+골드+승률</div></div>`}
 setInterval(renderCBoard,1500);
-function renderLobbyOn(){if(!D)return;fixDataChoice();if($('#olData'))renderDataPicker($('#olData'),D.set.data,v=>{D.set.data=v;saveNow();renderLobbyOn()},false);
+function renderLobbyOn(){if(!D)return;fixDataChoice();if($('#olSkin'))renderSkinChips($('#olSkin'));if($('#olData'))renderDataPicker($('#olData'),D.set.data,v=>{D.set.data=v;saveNow();renderLobbyOn()},false);
   const ri=rankOf(D.honor);
   $('#olWho').innerHTML=`<b>${esc(me)}</b> 님 · ${ON.className?`<span class="on-badge">${esc(ON.className)} 학급 모임방</span>`:'모두의 로비'}`;
   $('#olGold').textContent=D.gold+'G';const T=ON.you&&ON.you.tier;$('#olRank').innerHTML=T?`${tierBadge(T)} `+(T.rank?`${T.of}명 중 ${T.rank}등 · ${T.r}점 · <u>순위표</u>`:`첫 판을 하면 티어가 생겨요 · <u>순위표</u>`):'';void ri;
@@ -269,7 +269,8 @@ $('#orSupply').onclick=()=>openQuiz({title:'보급 받기',goal:3,earn:false,onD
 const TE=window.TankEngine;
 const BT={pmap:new Map(),play:null,lastPos:0,posKey:'',fell:false,aiAim:null,myI:-1};
 const NAMEW=k=>(WEAPONS[k]||WEAPONS.basic).name;
-function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0})}
+function sendLoadout(){if(!D)return;send({t:'loadout',up:{armor:D.up.armor|0,barrel:D.up.barrel|0,engine:D.up.engine|0},startShield:(D.items.startShield||0)>0,skin:D.skin||'tank'})}
+window.onSkinChange=()=>{if(ON.room)sendLoadout()};
 function onStart(m){addSys('#orChat','대전 시작! 맵을 만드는 중…');const r=m.room||ON.room;BT.eng=!!(r&&r.data==='eng');
   if(BT.eng){D.gold=Math.max(0,D.gold-ENG_FEE);saveNow();toast(`📘 영단어 버전: 참가비 ${ENG_FEE}G를 냈어요. 보상은 경기가 끝나고 영단어 ${ENG_CLAIM}문제로 받아요`,3200)}else toast('대전 시작!',1500)}
 
@@ -292,7 +293,7 @@ function buildTerrain(world){
 }
 function mkTank(v,players){const p=players[v.i]||(players[v.i]={name:v.name,points:0,kills:0,dmg:0,isAI:v.isAI});
   return {i:v.i,uid:v.uid,p,team:v.team,name:v.name,color:v.color,isAI:v.isAI,x:v.x,y:v.y,vx:0,vy:0,air:false,peak:v.y,hp:v.hp,hpMax:v.hpMax,alive:v.alive,angle:v.angle,
-    dmgMul:v.dmgMul,fuelMax:v.fuelMax,fuel:0,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,roundKills:v.roundKills||0,tier:v.tier||null,lastHit:null,deathOrder:0,tx:v.x,ty:v.y}}
+    dmgMul:v.dmgMul,fuelMax:v.fuelMax,fuel:0,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,roundKills:v.roundKills||0,tier:v.tier||null,skin:v.skin||'tank',lastHit:null,deathOrder:0,tx:v.x,ty:v.y}}
 function setFromView(t,v){Object.assign(t,{x:v.x,y:v.y,tx:v.x,ty:v.y,hp:v.hp,alive:v.alive,shield:v.shield,rainbow:v.rainbow,chute:v.chute,spider:v.spider,rot:v.rot||0,isAI:v.isAI});if(t!==G.me||G.cur!==G.me)t.angle=v.angle;t.vx=0;t.vy=0;t.air=false}
 
 function onRound(info){
@@ -372,7 +373,7 @@ function applyEv(e){const t=e.i!==undefined?G.tanks[e.i]:null;
 
 /* ---- 발사 장면 다시 보기 ---- */
 function onShot(m){if(!G||!G.online)return;finishPlay();aim=null;
-  const t=G.tanks[m.i];t.angle=m.a;t.showPow=0;BT.aiAim=null;
+  const t=G.tanks[m.i];t.angle=m.a;t.showPow=0;BT.aiAim=null;if(m.w)t.lastW=m.w;
   if(t.isAI||t!==G.me)addText(t.x,t.y-56,m.warp?'이동 포탄':NAMEW(m.w),'#fff',1,14);
   const mz=t;for(let i=0;i<10;i++)G.parts.push({x:mz.x+Math.cos(m.a)*22,y:mz.y-10+Math.sin(m.a)*22,vx:Math.cos(m.a)*rand(40,160)+rand(-30,30),vy:Math.sin(m.a)*rand(40,160)+rand(-30,30),life:0.4,max:0.4,size:rand(3,6),color:'rgba(230,230,230,.8)',grav:-20});
   sfx('fire');BT.pmap.clear();

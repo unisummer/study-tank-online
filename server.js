@@ -246,7 +246,7 @@ function onMsg(c, info, raw) {
       });
       return;
     }
-    case 'loadout': if (r) { r.loadouts = r.loadouts || {}; const up = m.up || {}; r.loadouts[info.uid] = { up: { armor: +up.armor | 0, barrel: +up.barrel | 0, engine: +up.engine | 0 }, startShield: !!m.startShield }; } return;
+    case 'loadout': if (r) { r.loadouts = r.loadouts || {}; const up = m.up || {}; r.loadouts[info.uid] = { up: { armor: +up.armor | 0, barrel: +up.barrel | 0, engine: +up.engine | 0 }, startShield: !!m.startShield, skin: ['tank','unicorn','u_sky','u_peach','u_lav','u_candy','u_snow','u_night','u_fire','u_lemon'].includes(m.skin) ? m.skin : 'tank' }; } return;
     case 'b_pos': if (r && r.battle) r.battle.onPos(info.uid, m); return;
     case 'b_item': if (r && r.battle) r.battle.onItem(info.uid, m); return;
     case 'b_fire': if (r && r.battle) r.battle.onFire(info.uid, m); return;
